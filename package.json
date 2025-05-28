@@ -4,7 +4,7 @@
   "description": "Autonomous GitHub-based agent engineer for the Ghostline project",
   "main": "engineer.js",
   "scripts": {
-    "start": "node engineer.js",
+    "start": "node engineer.js --pipeline",
     "pipeline": "node engineer.js --pipeline"
   },
   "dependencies": {

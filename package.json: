@@ -1,35 +1,28 @@
 {
   "name": "ghostline-agent-engineer",
   "version": "1.0.0",
-  "description": "Autonomous GitHub-based agent engineer for the Ghostline project",
+  "description": "Autonomous engineering agent for improving and deploying other Ghostline agents",
   "main": "engineer.js",
   "bin": {
     "ghostline-engineer": "./engineer.js"
   },
   "scripts": {
-    "start": "node engineer.js",
+    "start": "node engineer.js --pipeline",
     "pipeline": "node engineer.js --pipeline",
+    "once": "node engineer.js",
     "deploy": "railway up",
-    "test": "echo \"Engineer tests would be implemented here\" && exit 0"
+    "health": "node -e \"console.log('✅ OK')\""
   },
-  "keywords": [
-    "ghostline",
-    "agent",
-    "automation",
-    "github",
-    "ci-cd",
-    "code-analysis"
-  ],
-  "author": "Ghostline System",
+  "author": "Ghostline Systems",
   "license": "MIT",
   "dependencies": {
     "simple-git": "^3.19.1"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=16"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/ghostline-project/agent-engineer.git"
+    "url": "https://github.com/yuga1000/ghostline-agent-engineer.git"
   }
 }

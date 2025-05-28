@@ -9,6 +9,7 @@ class GhostlineAgentEngineer {
         this.git = simpleGit(this.repoPath);
         this.isRunning = false;
         this.cycleInterval = 5 * 60 * 1000; // 5 minutes
+        this.isGitRepository = false;
         
         this.targetAgents = ['LostHunter', 'Keygen', 'Scavenger'];
         this.log('Ghostline Agent Engineer initialized');
@@ -21,7 +22,7 @@ class GhostlineAgentEngineer {
     async initialize() {
         try {
             await this.setupGitConfig();
-            await this.validateRepository();
+            this.isGitRepository = await this.validateRepository();
             this.log('Engineer initialization completed successfully');
             return true;
         } catch (error) {
@@ -41,8 +42,14 @@ class GhostlineAgentEngineer {
     }
 
     async validateRepository() {
-        const status = await this.git.status();
-        this.log(`Repository status validated - ${status.files.length} tracked files`);
+        try {
+            const status = await this.git.status();
+            this.log(`Repository status validated - ${status.files.length} tracked files`);
+            return true;
+        } catch (error) {
+            this.log(`Not a git repository - git operations will be skipped`);
+            return false;
+        }
     }
 
     async scanForAgents() {
@@ -248,6 +255,11 @@ class GhostlineAgentEngineer {
     }
 
     async commitChanges(changedAgents) {
+        if (!this.isGitRepository) {
+            this.log('Git operations skipped - not a git repository');
+            return { success: true, message: 'No git repository available' };
+        }
+        
         try {
             await this.git.add('.');
             
@@ -278,6 +290,11 @@ class GhostlineAgentEngineer {
     }
 
     async pushChanges() {
+        if (!this.isGitRepository) {
+            this.log('Git operations skipped - not a git repository');
+            return { success: true, message: 'No git repository available' };
+        }
+        
         try {
             await this.git.push('origin', 'main');
             this.log('Changes pushed to GitHub successfully');

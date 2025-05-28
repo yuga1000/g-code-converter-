@@ -5,39 +5,151 @@ const simpleGit = require('simple-git');
 const { spawn } = require('child_process');
 const TelegramBot = require('node-telegram-bot-api');
 
-// Initialize health server immediately at module level
-const healthServer = http.createServer((req, res) => {
-    // Log all incoming requests for diagnostics
-    console.log(`[${new Date().toISOString()}] HTTP Request: ${req.method} ${req.url} from ${req.connection.remoteAddress}`);
+// Railway-optimized health check server with comprehensive binding strategies
+let healthServer;
+let serverReady = false;
+
+function createHealthHandler(req, res) {
+    const timestamp = new Date().toISOString();
+    const remoteAddr = req.connection.remoteAddress || req.socket.remoteAddress || 'unknown';
     
-    // Set headers immediately
-    res.setHeader('Content-Type', 'text/plain');
+    console.log(`[${timestamp}] Health check request: ${req.method} ${req.url} from ${remoteAddr}`);
+    
+    // Set Railway-compatible headers
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'close');
     
-    if (req.method === 'GET' && (req.url === '/health' || req.url === '/')) {
+    const healthData = {
+        status: 'healthy',
+        timestamp: timestamp,
+        service: 'ghostline-agent-engineer',
+        version: '1.0.0',
+        uptime: process.uptime(),
+        ready: serverReady
+    };
+    
+    if (req.method === 'GET' && (req.url === '/health' || req.url === '/healthz' || req.url === '/' || req.url === '/ready')) {
         res.writeHead(200);
-        res.end('OK');
+        res.end(JSON.stringify(healthData));
+    } else if (req.method === 'HEAD' && (req.url === '/health' || req.url === '/')) {
+        res.writeHead(200);
+        res.end();
     } else {
         res.writeHead(404);
-        res.end('Not Found');
+        res.end(JSON.stringify({ error: 'Not Found', path: req.url }));
     }
-});
+}
 
-// Error handling for server
-healthServer.on('error', (error) => {
-    console.error(`[${new Date().toISOString()}] Health server error:`, error);
-});
+function initializeHealthServer() {
+    const port = process.env.PORT || 3000;
+    const host = '0.0.0.0';
+    
+    console.log(`[${new Date().toISOString()}] Initializing health server on ${host}:${port}`);
+    
+    healthServer = http.createServer(createHealthHandler);
+    
+    // Enhanced error handling for Railway deployment
+    healthServer.on('error', (error) => {
+        console.error(`[${new Date().toISOString()}] Health server error:`, error);
+        if (error.code === 'EADDRINUSE') {
+            console.error(`[${new Date().toISOString()}] Port ${port} is in use, attempting fallback`);
+            attemptFallbackBinding();
+        }
+    });
+    
+    healthServer.on('clientError', (error, socket) => {
+        console.error(`[${new Date().toISOString()}] Client error:`, error.message);
+        if (socket.writable) {
+            socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+        }
+    });
+    
+    healthServer.on('listening', () => {
+        const addr = healthServer.address();
+        serverReady = true;
+        console.log(`[${new Date().toISOString()}] Health server ready on ${addr.address}:${addr.port}`);
+        console.log(`[${new Date().toISOString()}] Available endpoints: /health, /healthz, /ready, /`);
+        
+        // Verify server accessibility
+        setTimeout(performSelfHealthCheck, 1000);
+    });
+    
+    // Attempt primary binding
+    try {
+        healthServer.listen(port, host);
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] Failed to bind to ${host}:${port}`, error);
+        attemptFallbackBinding();
+    }
+}
 
-healthServer.on('clientError', (error, socket) => {
-    console.error(`[${new Date().toISOString()}] Client error:`, error);
-    socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
-});
+function attemptFallbackBinding() {
+    const fallbackPorts = [process.env.PORT || 3000, 8080, 5000, 4000];
+    const fallbackHosts = ['0.0.0.0', '::'];
+    
+    console.log(`[${new Date().toISOString()}] Attempting fallback binding strategies`);
+    
+    for (const host of fallbackHosts) {
+        for (const port of fallbackPorts) {
+            try {
+                if (healthServer) {
+                    healthServer.close();
+                }
+                
+                healthServer = http.createServer(createHealthHandler);
+                healthServer.listen(port, host, () => {
+                    const addr = healthServer.address();
+                    serverReady = true;
+                    console.log(`[${new Date().toISOString()}] Fallback binding successful on ${addr.address}:${addr.port}`);
+                });
+                return;
+            } catch (error) {
+                console.error(`[${new Date().toISOString()}] Fallback binding failed for ${host}:${port}`, error.message);
+                continue;
+            }
+        }
+    }
+    
+    console.error(`[${new Date().toISOString()}] All binding attempts failed`);
+}
 
-const port = process.env.PORT || 3000;
-healthServer.listen(port, '0.0.0.0', () => {
-    console.log(`[${new Date().toISOString()}] Health server ready and listening on 0.0.0.0:${port}`);
-    console.log(`[${new Date().toISOString()}] Health endpoints available: /health and /`);
-});
+function performSelfHealthCheck() {
+    const addr = healthServer.address();
+    if (!addr) return;
+    
+    console.log(`[${new Date().toISOString()}] Performing self health check`);
+    
+    const options = {
+        hostname: 'localhost',
+        port: addr.port,
+        path: '/health',
+        method: 'GET',
+        timeout: 5000
+    };
+    
+    const req = http.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+            console.log(`[${new Date().toISOString()}] Self health check successful: ${res.statusCode}`);
+        });
+    });
+    
+    req.on('error', (error) => {
+        console.error(`[${new Date().toISOString()}] Self health check failed:`, error.message);
+    });
+    
+    req.on('timeout', () => {
+        console.error(`[${new Date().toISOString()}] Self health check timeout`);
+        req.destroy();
+    });
+    
+    req.end();
+}
+
+// Initialize health server immediately
+initializeHealthServer();
 
 // Unconditional process persistence mechanism
 setInterval(() => {

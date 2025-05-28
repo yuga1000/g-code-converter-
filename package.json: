@@ -1,13 +1,35 @@
 {
   "name": "ghostline-agent-engineer",
   "version": "1.0.0",
-  "main": "main.js",
-  "type": "commonjs",
-  "scripts": {
-    "start": "node main.js"
+  "description": "Autonomous GitHub-based agent engineer for the Ghostline project",
+  "main": "engineer.js",
+  "bin": {
+    "ghostline-engineer": "./engineer.js"
   },
+  "scripts": {
+    "start": "node engineer.js",
+    "pipeline": "node engineer.js --pipeline",
+    "deploy": "railway up",
+    "test": "echo \"Engineer tests would be implemented here\" && exit 0"
+  },
+  "keywords": [
+    "ghostline",
+    "agent",
+    "automation",
+    "github",
+    "ci-cd",
+    "code-analysis"
+  ],
+  "author": "Ghostline System",
+  "license": "MIT",
   "dependencies": {
-    "simple-git": "^3.21.0",
-    "fs-extra": "^11.2.0"
+    "simple-git": "^3.19.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ghostline-project/agent-engineer.git"
   }
 }

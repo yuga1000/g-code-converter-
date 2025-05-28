@@ -387,12 +387,23 @@ function startHealthServer() {
     const port = process.env.PORT || 3000;
     
     const server = http.createServer((req, res) => {
-        if (req.url === '/health' || req.url === '/') {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        
+        if (req.method === 'OPTIONS') {
+            res.writeHead(200);
+            res.end();
+            return;
+        }
+        
+        if (req.url === '/health' || req.url === '/' || req.url === '/healthz') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ 
                 status: 'healthy', 
                 service: 'ghostline-agent-engineer',
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                uptime: process.uptime()
             }));
         } else {
             res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -400,8 +411,20 @@ function startHealthServer() {
         }
     });
     
-    server.listen(port, () => {
-        console.log(`[${new Date().toISOString()}] Health server running on port ${port}`);
+    server.on('error', (err) => {
+        console.error(`[${new Date().toISOString()}] Health server error:`, err.message);
+    });
+    
+    server.listen(port, '0.0.0.0', () => {
+        console.log(`[${new Date().toISOString()}] Health server running on 0.0.0.0:${port}`);
+    });
+    
+    // Handle graceful shutdown
+    process.on('SIGTERM', () => {
+        console.log(`[${new Date().toISOString()}] Received SIGTERM, shutting down gracefully`);
+        server.close(() => {
+            process.exit(0);
+        });
     });
     
     return server;

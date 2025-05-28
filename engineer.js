@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const http = require('http');
 const simpleGit = require('simple-git');
 
 class GhostlineAgentEngineer {
@@ -440,3 +441,18 @@ if (require.main === module) {
 }
 
 module.exports = GhostlineAgentEngineer;
+
+// Health check server for Railway deployment
+const healthServer = http.createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('OK');
+    } else {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
+    }
+});
+
+healthServer.listen(3000, () => {
+    console.log(`[${new Date().toISOString()}] Health server listening on port 3000`);
+});

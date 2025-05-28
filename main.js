@@ -1,1 +1,0 @@
-console.log("GHOSTLINE ENGINEER READY");

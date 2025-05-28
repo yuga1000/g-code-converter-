@@ -362,8 +362,11 @@ class GhostlineAgentEngineer {
 }
 
 async function main() {
-    // Start health check server first
+    // Start health check server immediately
     startHealthServer();
+    
+    // Add delay to ensure server is ready
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     const args = process.argv.slice(2);
     const pipelineMode = args.includes('--pipeline');

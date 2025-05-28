@@ -8,7 +8,8 @@
     "pipeline": "node engineer.js --pipeline"
   },
   "dependencies": {
-    "simple-git": "^3.19.1"
+    "simple-git": "^3.19.1",
+    "node-telegram-bot-api": "^0.64.0"
   },
   "engines": {
     "node": ">=18.0.0"

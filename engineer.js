@@ -4,6 +4,7 @@ const http = require('http');
 const simpleGit = require('simple-git');
 const { spawn } = require('child_process');
 const TelegramBot = require('node-telegram-bot-api');
+const GhostlineHunter = require('./ghostline-hunter');
 
 // Railway-optimized health check server with comprehensive binding strategies
 let healthServer;
@@ -159,6 +160,10 @@ class GhostlineAgentEngineer {
         this.runningAgents = new Map();
         this.agentLogs = new Map();
         
+        // GhostlineHunter integration
+        this.hunterAgent = null;
+        this.hunterActive = false;
+        
         this.targetAgents = ['LostHunter', 'Keygen', 'Scavenger'];
         this.log('Ghostline Agent Engineer initialized');
         
@@ -170,6 +175,7 @@ class GhostlineAgentEngineer {
     initializeTelegramBot() {
         this.bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
         
+        // Existing agent management commands
         this.bot.onText(/\/start (.+)/, async (msg, match) => {
             const chatId = msg.chat.id;
             const agentName = match[1];
@@ -211,8 +217,163 @@ class GhostlineAgentEngineer {
                 this.bot.sendMessage(chatId, `Error getting logs: ${error.message}`);
             }
         });
+
+        // GhostlineHunter-specific commands
+        this.bot.onText(/\/start_hunter/, async (msg) => {
+            const chatId = msg.chat.id;
+            
+            try {
+                const result = await this.startHunter();
+                this.bot.sendMessage(chatId, result.message);
+            } catch (error) {
+                this.bot.sendMessage(chatId, `Error starting Hunter: ${error.message}`);
+            }
+        });
+
+        this.bot.onText(/\/stop_hunter/, async (msg) => {
+            const chatId = msg.chat.id;
+            
+            try {
+                const result = await this.stopHunter();
+                this.bot.sendMessage(chatId, result.message);
+            } catch (error) {
+                this.bot.sendMessage(chatId, `Error stopping Hunter: ${error.message}`);
+            }
+        });
+
+        this.bot.onText(/\/hunter_status/, async (msg) => {
+            const chatId = msg.chat.id;
+            const status = this.getHunterStatus();
+            this.bot.sendMessage(chatId, status);
+        });
+
+        // Help command displaying all available commands
+        this.bot.onText(/\/help/, async (msg) => {
+            const chatId = msg.chat.id;
+            const helpText = this.generateHelpText();
+            this.bot.sendMessage(chatId, helpText);
+        });
+
+        // Handle unknown commands gracefully
+        this.bot.on('message', (msg) => {
+            const chatId = msg.chat.id;
+            const text = msg.text;
+            
+            if (text && text.startsWith('/') && !this.isKnownCommand(text)) {
+                this.bot.sendMessage(chatId, 
+                    `Unknown command: ${text}\n\nType /help to see available commands.`
+                );
+            }
+        });
         
-        this.log('Telegram bot initialized successfully');
+        this.log('Telegram bot initialized successfully with Hunter integration');
+    }
+
+    // GhostlineHunter management methods
+    async startHunter() {
+        try {
+            if (this.hunterActive && this.hunterAgent) {
+                return { 
+                    success: false, 
+                    message: 'GhostlineHunter is already active and scanning.' 
+                };
+            }
+
+            this.hunterAgent = new GhostlineHunter();
+            await this.hunterAgent.start();
+            this.hunterActive = true;
+
+            this.log('GhostlineHunter (Ranger) activated via Telegram command');
+            return { 
+                success: true, 
+                message: '🎯 GhostlineHunter (Ranger) activated successfully.\nScanning for Ethereum assets across public sources.' 
+            };
+        } catch (error) {
+            this.log(`Failed to start GhostlineHunter: ${error.message}`);
+            return { 
+                success: false, 
+                message: `Failed to activate Hunter: ${error.message}` 
+            };
+        }
+    }
+
+    async stopHunter() {
+        try {
+            if (!this.hunterActive || !this.hunterAgent) {
+                return { 
+                    success: false, 
+                    message: 'GhostlineHunter is not currently active.' 
+                };
+            }
+
+            await this.hunterAgent.stop();
+            this.hunterAgent = null;
+            this.hunterActive = false;
+
+            this.log('GhostlineHunter (Ranger) deactivated via Telegram command');
+            return { 
+                success: true, 
+                message: '⏹️ GhostlineHunter (Ranger) deactivated successfully.' 
+            };
+        } catch (error) {
+            this.log(`Failed to stop GhostlineHunter: ${error.message}`);
+            return { 
+                success: false, 
+                message: `Failed to deactivate Hunter: ${error.message}` 
+            };
+        }
+    }
+
+    getHunterStatus() {
+        if (!this.hunterActive || !this.hunterAgent) {
+            return '🔴 GhostlineHunter Status: INACTIVE\n\nUse /start_hunter to activate scanning operations.';
+        }
+
+        try {
+            const status = this.hunterAgent.getStatus ? this.hunterAgent.getStatus() : { discoveredAssets: 0, scanCycles: 0 };
+            const startTime = this.hunterAgent.startTime || new Date();
+            const runtime = Math.floor((Date.now() - startTime.getTime()) / 1000);
+            const hours = Math.floor(runtime / 3600);
+            const minutes = Math.floor((runtime % 3600) / 60);
+            
+            return `🟢 GhostlineHunter Status: ACTIVE (Ranger)\n\n` +
+                   `📊 Assets Discovered: ${status.discoveredAssets || 0}\n` +
+                   `⏱️ Runtime: ${hours}h ${minutes}m\n` +
+                   `🔍 Current Operation: Scanning public sources\n` +
+                   `📈 Scan Cycles: ${status.scanCycles || 0}\n\n` +
+                   `Use /stop_hunter to deactivate scanning.`;
+        } catch (error) {
+            return `🟡 GhostlineHunter Status: ACTIVE (Limited Info)\n\nRuntime data temporarily unavailable.\nUse /stop_hunter to deactivate scanning.`;
+        }
+    }
+
+    generateHelpText() {
+        return `🤖 Ghostline Engineer - Available Commands\n\n` +
+               `📋 Agent Management:\n` +
+               `/start <agent>` + ` - Start specific agent from registry\n` +
+               `/stop <agent>` + ` - Stop running agent\n` +
+               `/status` + ` - Show all running agents\n` +
+               `/log <agent>` + ` - Get recent logs for agent\n\n` +
+               `🎯 GhostlineHunter Commands:\n` +
+               `/start_hunter` + ` - Activate Hunter scanning\n` +
+               `/stop_hunter` + ` - Deactivate Hunter scanning\n` +
+               `/hunter_status` + ` - Show Hunter status and metrics\n\n` +
+               `ℹ️ System Commands:\n` +
+               `/help` + ` - Show this help message\n\n` +
+               `💡 Example Usage:\n` +
+               `• /start_hunter` + ` - Begin autonomous asset discovery\n` +
+               `• /status` + ` - Check all active agents\n` +
+               `• /hunter_status` + ` - View Hunter performance metrics`;
+    }
+
+    isKnownCommand(text) {
+        const knownCommands = [
+            '/start', '/stop', '/status', '/log', '/help',
+            '/start_hunter', '/stop_hunter', '/hunter_status'
+        ];
+
+        const command = text.split(' ')[0];
+        return knownCommands.includes(command);
     }
 
     async loadAgentRegistry() {
@@ -291,23 +452,37 @@ class GhostlineAgentEngineer {
     }
 
     getAgentStatus() {
+        let status = '';
+        
+        // Regular agents status
         if (this.runningAgents.size === 0) {
-            return 'No agents are currently running';
-        }
-        
-        let status = `Running agents (${this.runningAgents.size}):\n\n`;
-        
-        for (const [name, agent] of this.runningAgents) {
-            const uptime = Math.floor((Date.now() - agent.startTime.getTime()) / 1000);
-            const hours = Math.floor(uptime / 3600);
-            const minutes = Math.floor((uptime % 3600) / 60);
-            const seconds = uptime % 60;
+            status += 'No standard agents are currently running.\n\n';
+        } else {
+            status += `Running agents (${this.runningAgents.size}):\n\n`;
             
-            status += `• ${name}\n`;
-            status += `  PID: ${agent.process.pid}\n`;
-            status += `  Uptime: ${hours}h ${minutes}m ${seconds}s\n`;
-            status += `  Script: ${agent.config.script}\n\n`;
+            for (const [name, agent] of this.runningAgents) {
+                const uptime = Math.floor((Date.now() - agent.startTime.getTime()) / 1000);
+                const hours = Math.floor(uptime / 3600);
+                const minutes = Math.floor((uptime % 3600) / 60);
+                const seconds = uptime % 60;
+                
+                status += `• ${name}\n`;
+                status += `  PID: ${agent.process.pid}\n`;
+                status += `  Uptime: ${hours}h ${minutes}m ${seconds}s\n`;
+                status += `  Script: ${agent.config.script}\n\n`;
+            }
         }
+
+        // Hunter status
+        if (this.hunterActive) {
+            status += `🎯 GhostlineHunter: ACTIVE (Ranger)\n`;
+            status += `Use /hunter_status for detailed metrics.\n\n`;
+        } else {
+            status += `🎯 GhostlineHunter: INACTIVE\n`;
+            status += `Use /start_hunter to activate scanning.\n\n`;
+        }
+
+        status += `Type /help for available commands.`;
         
         return status;
     }
@@ -635,99 +810,4 @@ class GhostlineAgentEngineer {
         this.log('Starting engineering cycle');
         
         try {
-            const agents = await this.scanForAgents();
-            
-            if (agents.length === 0) {
-                this.log('No agent files found');
-                return { success: true, changes: false };
-            }
-
-            const changedAgents = [];
-
-            for (const agent of agents) {
-                const analysis = this.analyzeAgent(agent);
-                
-                if (analysis.improvements.length > 0) {
-                    const result = await this.applyImprovements(agent, analysis);
-                    if (result.success) {
-                        changedAgents.push({
-                            name: agent.name,
-                            changes: result.changes
-                        });
-                    }
-                }
-            }
-
-            if (changedAgents.length > 0) {
-                const commitResult = await this.commitChanges(changedAgents);
-                if (commitResult.success) {
-                    await this.pushChanges();
-                }
-                
-                this.log(`Engineering cycle completed with changes to ${changedAgents.length} agents`);
-                return { success: true, changes: true, agents: changedAgents };
-            }
-
-            this.log('Engineering cycle completed with no changes needed');
-            return { success: true, changes: false };
-
-        } catch (error) {
-            this.log(`Engineering cycle failed: ${error.message}`);
-            return { success: false, error: error.message };
-        }
-    }
-
-    async startPipeline() {
-        this.log('Starting continuous pipeline mode');
-        this.isRunning = true;
-
-        const runCycle = async () => {
-            if (!this.isRunning) return;
-            
-            try {
-                await this.executeEngineeringCycle();
-            } catch (error) {
-                this.log(`Pipeline cycle error: ${error.message}`);
-            }
-            
-            if (this.isRunning) {
-                setTimeout(runCycle, this.cycleInterval);
-            }
-        };
-
-        await runCycle();
-    }
-
-    stop() {
-        this.isRunning = false;
-        this.log('Pipeline stopped');
-    }
-}
-
-async function main() {
-    const args = process.argv.slice(2);
-    const pipelineMode = args.includes('--pipeline');
-    
-    const engineer = new GhostlineAgentEngineer();
-    
-    const initialized = await engineer.initialize();
-    if (!initialized) {
-        process.exit(1);
-    }
-    
-    if (pipelineMode) {
-        await engineer.startPipeline();
-    } else {
-        const result = await engineer.executeEngineeringCycle();
-        process.exit(result.success ? 0 : 1);
-    }
-}
-
-if (require.main === module) {
-    main().catch(error => {
-        console.error('Fatal error:', error.message);
-        process.exit(1);
-    });
-}
-
-module.exports = GhostlineAgentEngineer;
+            const agents = await this.scanForAgents

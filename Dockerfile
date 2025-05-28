@@ -2,19 +2,20 @@ FROM node:18-slim
 
 WORKDIR /app
 
-# Install git and clean up
-RUN apt-get update && \
-    apt-get install -y git && \
-    rm -rf /var/lib/apt/lists/*
+# Install git
+RUN apt-get update && apt-get install -y git && apt-get clean
 
-# Copy all files at once to avoid context issues
-COPY . .
+# Copy package.json first
+COPY package.json .
 
 # Install dependencies
-RUN npm install --production
+RUN npm install
+
+# Copy remaining files
+COPY engineer.js .
 
 # Set environment
 ENV NODE_ENV=production
 
-# Start the engineer
-CMD ["npm", "run", "pipeline"]
+# Start command
+CMD ["node", "engineer.js", "--pipeline"]

@@ -15,7 +15,6 @@ function createHealthHandler(req, res) {
     
     console.log(`[${timestamp}] Health check request: ${req.method} ${req.url} from ${remoteAddr}`);
     
-    // Set Railway-compatible headers
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'close');
@@ -49,7 +48,6 @@ function initializeHealthServer() {
     
     healthServer = http.createServer(createHealthHandler);
     
-    // Enhanced error handling for Railway deployment
     healthServer.on('error', (error) => {
         console.error(`[${new Date().toISOString()}] Health server error:`, error);
         if (error.code === 'EADDRINUSE') {
@@ -71,11 +69,9 @@ function initializeHealthServer() {
         console.log(`[${new Date().toISOString()}] Health server ready on ${addr.address}:${addr.port}`);
         console.log(`[${new Date().toISOString()}] Available endpoints: /health, /healthz, /ready, /`);
         
-        // Verify server accessibility
         setTimeout(performSelfHealthCheck, 1000);
     });
     
-    // Attempt primary binding
     try {
         healthServer.listen(port, host);
     } catch (error) {
@@ -148,10 +144,8 @@ function performSelfHealthCheck() {
     req.end();
 }
 
-// Initialize health server immediately
 initializeHealthServer();
 
-// Unconditional process persistence mechanism
 setInterval(() => {
     // Heartbeat to maintain process for Railway health monitoring
 }, 30000);
@@ -161,15 +155,14 @@ class GhostlineAgentEngineer {
         this.repoPath = process.cwd();
         this.git = simpleGit(this.repoPath);
         this.isRunning = false;
-        this.cycleInterval = 5 * 60 * 1000; // 5 minutes
+        this.cycleInterval = 5 * 60 * 1000;
         this.isGitRepository = false;
-        this.runningAgents = new Map(); // Store running agent processes
-        this.agentLogs = new Map(); // Store agent logs
+        this.runningAgents = new Map();
+        this.agentLogs = new Map();
         
         this.targetAgents = ['LostHunter', 'Keygen', 'Scavenger'];
         this.log('Ghostline Agent Engineer initialized');
         
-        // Initialize Telegram bot if token is provided
         if (process.env.TELEGRAM_TOKEN) {
             this.initializeTelegramBot();
         }
@@ -258,10 +251,8 @@ class GhostlineAgentEngineer {
                 config: agentConfig
             });
             
-            // Initialize log storage for this agent
             this.agentLogs.set(agentName, []);
             
-            // Capture stdout and stderr
             agentProcess.stdout.on('data', (data) => {
                 this.addAgentLog(agentName, `[OUT] ${data.toString()}`);
             });
@@ -333,7 +324,6 @@ class GhostlineAgentEngineer {
             return `Agent '${agentName}' has no log entries`;
         }
         
-        // Return last 10 log lines
         const recentLogs = logs.slice(-10);
         return `Last logs for '${agentName}':\n\n${recentLogs.join('\n')}`;
     }
@@ -343,7 +333,6 @@ class GhostlineAgentEngineer {
         const timestamp = new Date().toISOString();
         logs.push(`[${timestamp}] ${logEntry.trim()}`);
         
-        // Keep only last 100 log entries per agent
         if (logs.length > 100) {
             logs.splice(0, logs.length - 100);
         }
@@ -353,18 +342,6 @@ class GhostlineAgentEngineer {
 
     log(message) {
         console.log(`[${new Date().toISOString()}] ${message}`);
-    }
-
-    async initialize() {
-        try {
-            await this.setupGitConfig();
-            this.isGitRepository = await this.validateRepository();
-            this.log('Engineer initialization completed successfully');
-            return true;
-        } catch (error) {
-            this.log(`Initialization failed: ${error.message}`);
-            return false;
-        }
     }
 
     async setupGitConfig() {
@@ -384,6 +361,18 @@ class GhostlineAgentEngineer {
             return true;
         } catch (error) {
             this.log(`Not a git repository - git operations will be skipped`);
+            return false;
+        }
+    }
+
+    async initialize() {
+        try {
+            await this.setupGitConfig();
+            this.isGitRepository = await this.validateRepository();
+            this.log('Engineer initialization completed successfully');
+            return true;
+        } catch (error) {
+            this.log(`Initialization failed: ${error.message}`);
             return false;
         }
     }
@@ -462,7 +451,6 @@ class GhostlineAgentEngineer {
             metrics: this.calculateMetrics(agent.content)
         };
 
-        // Security analysis
         if (agent.content.includes('eval(')) {
             analysis.issues.push({
                 type: 'security',
@@ -471,7 +459,6 @@ class GhostlineAgentEngineer {
             });
         }
 
-        // Error handling analysis
         const asyncCount = (agent.content.match(/async\s+function/g) || []).length;
         const tryCount = (agent.content.match(/try\s*{/g) || []).length;
         
@@ -483,7 +470,6 @@ class GhostlineAgentEngineer {
             });
         }
 
-        // Logging analysis
         if (agent.content.includes('console.log') && !agent.content.includes('logger')) {
             analysis.improvements.push({
                 type: 'logging',
@@ -492,7 +478,6 @@ class GhostlineAgentEngineer {
             });
         }
 
-        // Performance analysis
         if (agent.content.includes('for (') && agent.content.includes('.push(')) {
             analysis.improvements.push({
                 type: 'performance',
@@ -715,12 +700,6 @@ class GhostlineAgentEngineer {
 }
 
 async function main() {
-    // Start health check server immediately
-    startHealthServer();
-    
-    // Add delay to ensure server is ready
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
     const args = process.argv.slice(2);
     const pipelineMode = args.includes('--pipeline');
     
@@ -739,53 +718,6 @@ async function main() {
     }
 }
 
-function startHealthServer() {
-    const port = process.env.PORT || 3000;
-    
-    const server = http.createServer((req, res) => {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-        
-        if (req.method === 'OPTIONS') {
-            res.writeHead(200);
-            res.end();
-            return;
-        }
-        
-        if (req.url === '/health' || req.url === '/' || req.url === '/healthz') {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ 
-                status: 'healthy', 
-                service: 'ghostline-agent-engineer',
-                timestamp: new Date().toISOString(),
-                uptime: process.uptime()
-            }));
-        } else {
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Not found' }));
-        }
-    });
-    
-    server.on('error', (err) => {
-        console.error(`[${new Date().toISOString()}] Health server error:`, err.message);
-    });
-    
-    server.listen(port, '0.0.0.0', () => {
-        console.log(`[${new Date().toISOString()}] Health server running on 0.0.0.0:${port}`);
-    });
-    
-    // Handle graceful shutdown
-    process.on('SIGTERM', () => {
-        console.log(`[${new Date().toISOString()}] Received SIGTERM, shutting down gracefully`);
-        server.close(() => {
-            process.exit(0);
-        });
-    });
-    
-    return server;
-}
-
 if (require.main === module) {
     main().catch(error => {
         console.error('Fatal error:', error.message);
@@ -794,18 +726,3 @@ if (require.main === module) {
 }
 
 module.exports = GhostlineAgentEngineer;
-
-// Health check server for Railway deployment
-const healthServer = http.createServer((req, res) => {
-    if (req.method === 'GET' && req.url === '/health') {
-        res.writeHead(200, { 'Content-Type': 'text/plain' });
-        res.end('OK');
-    } else {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end('Not Found');
-    }
-});
-
-healthServer.listen(3000, () => {
-    console.log(`[${new Date().toISOString()}] Health server listening on port 3000`);
-});

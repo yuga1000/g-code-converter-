@@ -18,7 +18,7 @@ const healthServer = http.createServer((req, res) => {
 
 const port = process.env.PORT || 3000;
 healthServer.listen(port, '0.0.0.0', () => {
-    console.log(`[${new Date().toISOString()}] Health server listening on port ${port}`);
+    console.log(`[${new Date().toISOString()}] Health server listening on 0.0.0.0:${port}`);
 });
 
 // Unconditional process persistence mechanism

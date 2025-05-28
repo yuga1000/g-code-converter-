@@ -2,6 +2,8 @@ const fs = require('fs').promises;
 const path = require('path');
 const http = require('http');
 const simpleGit = require('simple-git');
+const { spawn } = require('child_process');
+const TelegramBot = require('node-telegram-bot-api');
 
 class GhostlineAgentEngineer {
     constructor() {
@@ -10,9 +12,192 @@ class GhostlineAgentEngineer {
         this.isRunning = false;
         this.cycleInterval = 5 * 60 * 1000; // 5 minutes
         this.isGitRepository = false;
+        this.runningAgents = new Map(); // Store running agent processes
+        this.agentLogs = new Map(); // Store agent logs
         
         this.targetAgents = ['LostHunter', 'Keygen', 'Scavenger'];
         this.log('Ghostline Agent Engineer initialized');
+        
+        // Initialize Telegram bot if token is provided
+        if (process.env.TELEGRAM_TOKEN) {
+            this.initializeTelegramBot();
+        }
+    }
+
+    initializeTelegramBot() {
+        this.bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
+        
+        this.bot.onText(/\/start (.+)/, async (msg, match) => {
+            const chatId = msg.chat.id;
+            const agentName = match[1];
+            
+            try {
+                const result = await this.startAgent(agentName);
+                this.bot.sendMessage(chatId, result.message);
+            } catch (error) {
+                this.bot.sendMessage(chatId, `Error starting agent: ${error.message}`);
+            }
+        });
+        
+        this.bot.onText(/\/stop (.+)/, async (msg, match) => {
+            const chatId = msg.chat.id;
+            const agentName = match[1];
+            
+            try {
+                const result = await this.stopAgent(agentName);
+                this.bot.sendMessage(chatId, result.message);
+            } catch (error) {
+                this.bot.sendMessage(chatId, `Error stopping agent: ${error.message}`);
+            }
+        });
+        
+        this.bot.onText(/\/status/, async (msg) => {
+            const chatId = msg.chat.id;
+            const status = this.getAgentStatus();
+            this.bot.sendMessage(chatId, status);
+        });
+        
+        this.bot.onText(/\/log (.+)/, async (msg, match) => {
+            const chatId = msg.chat.id;
+            const agentName = match[1];
+            
+            try {
+                const logs = await this.getAgentLogs(agentName);
+                this.bot.sendMessage(chatId, logs);
+            } catch (error) {
+                this.bot.sendMessage(chatId, `Error getting logs: ${error.message}`);
+            }
+        });
+        
+        this.log('Telegram bot initialized successfully');
+    }
+
+    async loadAgentRegistry() {
+        try {
+            const agentsFile = path.join(this.repoPath, 'agents.json');
+            const data = await fs.readFile(agentsFile, 'utf8');
+            return JSON.parse(data);
+        } catch (error) {
+            this.log(`Failed to load agents.json: ${error.message}`);
+            return {};
+        }
+    }
+
+    async startAgent(agentName) {
+        const registry = await this.loadAgentRegistry();
+        const agentConfig = registry[agentName];
+        
+        if (!agentConfig) {
+            return { success: false, message: `Agent '${agentName}' not found in registry` };
+        }
+        
+        if (this.runningAgents.has(agentName)) {
+            return { success: false, message: `Agent '${agentName}' is already running` };
+        }
+        
+        try {
+            const agentProcess = spawn('node', [agentConfig.script], {
+                cwd: this.repoPath,
+                stdio: ['pipe', 'pipe', 'pipe']
+            });
+            
+            this.runningAgents.set(agentName, {
+                process: agentProcess,
+                startTime: new Date(),
+                config: agentConfig
+            });
+            
+            // Initialize log storage for this agent
+            this.agentLogs.set(agentName, []);
+            
+            // Capture stdout and stderr
+            agentProcess.stdout.on('data', (data) => {
+                this.addAgentLog(agentName, `[OUT] ${data.toString()}`);
+            });
+            
+            agentProcess.stderr.on('data', (data) => {
+                this.addAgentLog(agentName, `[ERR] ${data.toString()}`);
+            });
+            
+            agentProcess.on('close', (code) => {
+                this.addAgentLog(agentName, `Process exited with code ${code}`);
+                this.runningAgents.delete(agentName);
+            });
+            
+            this.log(`Started agent: ${agentName}`);
+            return { success: true, message: `Agent '${agentName}' started successfully` };
+            
+        } catch (error) {
+            return { success: false, message: `Failed to start agent: ${error.message}` };
+        }
+    }
+
+    async stopAgent(agentName) {
+        const runningAgent = this.runningAgents.get(agentName);
+        
+        if (!runningAgent) {
+            return { success: false, message: `Agent '${agentName}' is not running` };
+        }
+        
+        try {
+            runningAgent.process.kill('SIGTERM');
+            this.runningAgents.delete(agentName);
+            this.log(`Stopped agent: ${agentName}`);
+            return { success: true, message: `Agent '${agentName}' stopped successfully` };
+        } catch (error) {
+            return { success: false, message: `Failed to stop agent: ${error.message}` };
+        }
+    }
+
+    getAgentStatus() {
+        if (this.runningAgents.size === 0) {
+            return 'No agents are currently running';
+        }
+        
+        let status = `Running agents (${this.runningAgents.size}):\n\n`;
+        
+        for (const [name, agent] of this.runningAgents) {
+            const uptime = Math.floor((Date.now() - agent.startTime.getTime()) / 1000);
+            const hours = Math.floor(uptime / 3600);
+            const minutes = Math.floor((uptime % 3600) / 60);
+            const seconds = uptime % 60;
+            
+            status += `• ${name}\n`;
+            status += `  PID: ${agent.process.pid}\n`;
+            status += `  Uptime: ${hours}h ${minutes}m ${seconds}s\n`;
+            status += `  Script: ${agent.config.script}\n\n`;
+        }
+        
+        return status;
+    }
+
+    async getAgentLogs(agentName) {
+        const logs = this.agentLogs.get(agentName);
+        
+        if (!logs) {
+            return `No logs available for agent '${agentName}'`;
+        }
+        
+        if (logs.length === 0) {
+            return `Agent '${agentName}' has no log entries`;
+        }
+        
+        // Return last 10 log lines
+        const recentLogs = logs.slice(-10);
+        return `Last logs for '${agentName}':\n\n${recentLogs.join('\n')}`;
+    }
+
+    addAgentLog(agentName, logEntry) {
+        const logs = this.agentLogs.get(agentName) || [];
+        const timestamp = new Date().toISOString();
+        logs.push(`[${timestamp}] ${logEntry.trim()}`);
+        
+        // Keep only last 100 log entries per agent
+        if (logs.length > 100) {
+            logs.splice(0, logs.length - 100);
+        }
+        
+        this.agentLogs.set(agentName, logs);
     }
 
     log(message) {

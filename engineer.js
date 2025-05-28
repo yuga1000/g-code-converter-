@@ -144,8 +144,7 @@ function performSelfHealthCheck() {
     req.end();
 }
 
-initializeHealthServer();
-
+// Unconditional process persistence mechanism
 setInterval(() => {
     // Heartbeat to maintain process for Railway health monitoring
 }, 30000);

@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const http = require('http');
 const simpleGit = require('simple-git');
 
 class GhostlineAgentEngineer {
@@ -361,6 +362,9 @@ class GhostlineAgentEngineer {
 }
 
 async function main() {
+    // Start health check server first
+    startHealthServer();
+    
     const args = process.argv.slice(2);
     const pipelineMode = args.includes('--pipeline');
     
@@ -377,6 +381,30 @@ async function main() {
         const result = await engineer.executeEngineeringCycle();
         process.exit(result.success ? 0 : 1);
     }
+}
+
+function startHealthServer() {
+    const port = process.env.PORT || 3000;
+    
+    const server = http.createServer((req, res) => {
+        if (req.url === '/health' || req.url === '/') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ 
+                status: 'healthy', 
+                service: 'ghostline-agent-engineer',
+                timestamp: new Date().toISOString()
+            }));
+        } else {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Not found' }));
+        }
+    });
+    
+    server.listen(port, () => {
+        console.log(`[${new Date().toISOString()}] Health server running on port ${port}`);
+    });
+    
+    return server;
 }
 
 if (require.main === module) {

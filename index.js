@@ -1,31 +1,29 @@
-const simpleGit = require('simple-git');
 const fs = require('fs');
 const path = require('path');
+const simpleGit = require('simple-git');
 
-// Путь к файлу, который агент будет обновлять
-const FILE_PATH = path.join(__dirname, 'main.js');
-
-// Пример нового содержимого
-const GENERATED_CODE = `
-console.log("🔧 AUTO-CODE: Updated by ghostline-agent-engineer");
+const FILE_NAME = 'auto-generated.js';
+const FILE_CONTENT = `
+// 🔧 Сгенерировано автоматически
+console.log("🧠 Ghostline Agent Activated");
 `;
 
-// Основной запуск
 (async () => {
   const git = simpleGit();
 
   try {
-    // Шаг 1: Генерация нового содержимого
-    fs.writeFileSync(FILE_PATH, GENERATED_CODE, 'utf-8');
-    console.log('✅ Файл main.js обновлён.');
+    // Шаг 1: Создание нового файла
+    const fullPath = path.join(__dirname, FILE_NAME);
+    fs.writeFileSync(fullPath, FILE_CONTENT, 'utf-8');
+    console.log(`✅ Создан файл: ${FILE_NAME}`);
 
-    // Шаг 2: Git add, commit, push
-    await git.add('./*');
-    await git.commit('🔄 auto: update main.js');
+    // Шаг 2: Добавление, коммит и пуш
+    await git.add(FILE_NAME);
+    await git.commit('🚀 auto: create new code file');
     await git.push();
-    console.log('🚀 Изменения запушены в GitHub.');
+    console.log('📡 Изменения отправлены в GitHub');
 
   } catch (err) {
-    console.error('❌ Ошибка при обновлении и пуше:', err);
+    console.error('❌ Ошибка:', err);
   }
 })();

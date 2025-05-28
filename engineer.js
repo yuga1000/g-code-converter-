@@ -7,18 +7,36 @@ const TelegramBot = require('node-telegram-bot-api');
 
 // Initialize health server immediately at module level
 const healthServer = http.createServer((req, res) => {
-    if (req.method === 'GET' && req.url === '/health') {
-        res.writeHead(200, { 'Content-Type': 'text/plain' });
+    // Log all incoming requests for diagnostics
+    console.log(`[${new Date().toISOString()}] HTTP Request: ${req.method} ${req.url} from ${req.connection.remoteAddress}`);
+    
+    // Set headers immediately
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Connection', 'close');
+    
+    if (req.method === 'GET' && (req.url === '/health' || req.url === '/')) {
+        res.writeHead(200);
         res.end('OK');
     } else {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.writeHead(404);
         res.end('Not Found');
     }
 });
 
+// Error handling for server
+healthServer.on('error', (error) => {
+    console.error(`[${new Date().toISOString()}] Health server error:`, error);
+});
+
+healthServer.on('clientError', (error, socket) => {
+    console.error(`[${new Date().toISOString()}] Client error:`, error);
+    socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+});
+
 const port = process.env.PORT || 3000;
 healthServer.listen(port, '0.0.0.0', () => {
-    console.log(`[${new Date().toISOString()}] Health server listening on 0.0.0.0:${port}`);
+    console.log(`[${new Date().toISOString()}] Health server ready and listening on 0.0.0.0:${port}`);
+    console.log(`[${new Date().toISOString()}] Health endpoints available: /health and /`);
 });
 
 // Unconditional process persistence mechanism

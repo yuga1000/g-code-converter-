@@ -1,9 +1,21 @@
-FROM node:18
+FROM node:18-slim
+
 WORKDIR /app
+
+# Install git
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+# Copy package files first for better caching
 COPY package.json ./
-RUN npm install --production
-COPY . .
+
+# Install dependencies
+RUN npm install --only=production
+
+# Copy source code
+COPY engineer.js ./
+
+# Set environment
 ENV NODE_ENV=production
-ENV GHOSTLINE_MODE=pipeline
-EXPOSE 3000
+
+# Run the engineer in pipeline mode
 CMD ["node", "engineer.js", "--pipeline"]

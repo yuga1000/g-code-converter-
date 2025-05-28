@@ -1,6 +1,5 @@
 const fs = require('fs').promises;
 const path = require('path');
-const http = require('http');
 const simpleGit = require('simple-git');
 
 class GhostlineAgentEngineer {

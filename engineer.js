@@ -369,6 +369,12 @@ class GhostlineAgentEngineer {
             await this.setupGitConfig();
             this.isGitRepository = await this.validateRepository();
             this.log('Engineer initialization completed successfully');
+            
+            // Initialize health server after successful engineer initialization
+            if (!healthServer) {
+                initializeHealthServer();
+            }
+            
             return true;
         } catch (error) {
             this.log(`Initialization failed: ${error.message}`);

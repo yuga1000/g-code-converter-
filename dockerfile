@@ -1,39 +1,24 @@
-FROM node:18-alpine
+# Используем полноценный Node.js (не Alpine — в нём часто npm отваливается)
+FROM node:18
 
-# Set working directory
+# Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Install git for repository operations
-RUN apk add --no-cache git
-
-# Copy package files
+# Копируем package.json и lock-файл
 COPY package*.json ./
 
-# Install dependencies as root
-RUN npm ci --only=production && \
-    npm cache clean --force
+# Устанавливаем зависимости
+RUN npm ci
 
-# Create non-root user after install
-RUN addgroup -g 1001 -S ghostline && \
-    adduser -S ghostline -u 1001 && \
-    chown -R ghostline:ghostline /app
-
-# Copy rest of the app
+# Копируем весь код
 COPY . .
 
-# Switch to non-root user
-USER ghostline
-
-# Expose health check port (optional)
-EXPOSE 3000
-
-# Set environment variables
+# Устанавливаем переменные окружения
 ENV NODE_ENV=production
 ENV GHOSTLINE_MODE=pipeline
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD node -e "console.log('Engineer health check passed')" || exit 1
+# Открываем порт (если нужен)
+EXPOSE 3000
 
-# Default command (pipeline mode)
+# Команда запуска
 CMD ["node", "engineer.js", "--pipeline"]

@@ -5,6 +5,27 @@ const simpleGit = require('simple-git');
 const { spawn } = require('child_process');
 const TelegramBot = require('node-telegram-bot-api');
 
+// Initialize health server immediately at module level
+const healthServer = http.createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('OK');
+    } else {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
+    }
+});
+
+const port = process.env.PORT || 3000;
+healthServer.listen(port, '0.0.0.0', () => {
+    console.log(`[${new Date().toISOString()}] Health server listening on port ${port}`);
+});
+
+// Unconditional process persistence mechanism
+setInterval(() => {
+    // Heartbeat to maintain process for Railway health monitoring
+}, 30000);
+
 class GhostlineAgentEngineer {
     constructor() {
         this.repoPath = process.cwd();

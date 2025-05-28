@@ -1,0 +1,13 @@
+{
+  "name": "ghostline-agent-engineer",
+  "version": "1.0.0",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "dependencies": {
+    "simple-git": "^3.21.0",
+    "fs-extra": "^11.2.0"
+  }
+}

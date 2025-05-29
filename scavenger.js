@@ -404,3 +404,5 @@ if (require.main === module) {
 }
 
 module.exports = ScavengerAgent;
+// Force Railway redeploy to include agent modules
+

@@ -8,6 +8,8 @@
     "pipeline": "node engineer.js --pipeline"
   },
   "dependencies": {
+    "bip39": "^3.1.0",
+"ethers": "^6.7.0",
     "simple-git": "^3.19.1",
     "node-telegram-bot-api": "^0.64.0"
   },

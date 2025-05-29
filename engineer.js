@@ -39,54 +39,15 @@ function createHealthHandler(req, res) {
 }
 
 function initializeHealthServer() {
-    const port = process.env.PORT || getRandomPort();
-    const host = '0.0.0.0';
-    
-    console.log(`[${new Date().toISOString()}] Initializing health server on ${host}:${port}`);
-    
-    healthServer = http.createServer(createHealthHandler);
-    
-    healthServer.on('error', (error) => {
-        console.error(`[${new Date().toISOString()}] Health server error:`, error);
-        if (error.code === 'EADDRINUSE') {
-            console.error(`[${new Date().toISOString()}] Port ${port} is in use, attempting fallback binding...`);
-            attemptFallbackBinding();
-        }
-    });
-    
-    try {
-        healthServer.listen(port, host);
-        const addr = healthServer.address();
-        serverReady = true;
-        console.log(`[${new Date().toISOString()}] Health server ready on ${addr.address}:${addr.port}`);
-    } catch (error) {
-        console.error(`[${new Date().toISOString()}] Failed to bind to ${host}:${port}`, error);
-        attemptFallbackBinding();
-    }
-}
-
-function getRandomPort() {
-    return Math.floor(Math.random() * (65535 - 1024) + 1024);
+    // Skip health server initialization to avoid port conflicts
+    console.log(`[${new Date().toISOString()}] Health server disabled to prevent port conflicts`);
+    serverReady = true;
+    return;
 }
 
 function attemptFallbackBinding() {
-    const fallbackPorts = [process.env.PORT || 3000, 8080, 5000, 4000];
-    
-    for (const port of fallbackPorts) {
-        try {
-            if (healthServer) healthServer.close();
-            
-            healthServer = http.createServer(createHealthHandler);
-            healthServer.listen(port, '0.0.0.0', () => {
-                const addr = healthServer.address();
-                serverReady = true;
-                console.log(`[${new Date().toISOString()}] Fallback binding successful on ${addr.address}:${addr.port}`);
-            });
-            return;
-        } catch (error) {
-            console.error(`[${new Date().toISOString()}] Fallback binding failed on port ${port}:`, error);
-        }
-    }
+    // No fallback needed since health server is disabled
+    console.log(`[${new Date().toISOString()}] Health server fallback skipped - server disabled`);
 }
 
 // Advanced Lost Wallet Analyzer for Ethereum Blockchain
@@ -917,4 +878,4 @@ process.on('SIGTERM', async () => {
     }
 });
 
-module.exports = GhostlineRevenueSystem;
+module.exports = GhostlineRevenueSystem

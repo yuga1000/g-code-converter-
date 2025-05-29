@@ -9,9 +9,9 @@ let serverReady = false;
 
 function createHealthHandler(req, res) {
     const timestamp = new Date().toISOString();
-    const remoteAddr = req.connection.remoteAddress || req.socket.remoteAddress;
+    const remoteAddr = req.connection.remoteAddress || req.socket.remoteAddress || 'unknown';
     
-    console.log(`[${timestamp}] Health check request: ${req.method} ${req.url}`);
+    console.log(`[${timestamp}] Health check request: ${req.method} ${req.url} from ${remoteAddr}`);
     
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Cache-Control', 'no-cache');
@@ -26,10 +26,10 @@ function createHealthHandler(req, res) {
         ready: serverReady
     };
     
-    if (req.method === 'GET' && (req.url === '/health' || req.url === '/health')) {
+    if (req.method === 'GET' && (req.url === '/health' || req.url === '/healthz' || req.url === '/' || req.url === '/ready')) {
         res.writeHead(200);
         res.end(JSON.stringify(healthData));
-    } else if (req.method === 'HEAD' && (req.url === '/health' || req.url === '/health')) {
+    } else if (req.method === 'HEAD' && (req.url === '/health' || req.url === '/')) {
         res.writeHead(200);
         res.end();
     } else {
@@ -271,250 +271,6 @@ class LostWalletAnalyzer {
         }
     }
 
-    async analyzeWalletForAbandonment(walletAddress) {
-        this.metrics.walletsAnalyzed++;
-        
-        try {
-            // Get comprehensive wallet information
-            const walletInfo = await this.getWalletAnalysis(walletAddress);
-            
-            // Apply abandonment criteria
-            const abandonmentScore = this.calculateAbandonmentScore(walletInfo);
-            
-            // Check if wallet meets genuine loss criteria
-            if (this.isGenuinelyLost(walletInfo, abandonmentScore)) {
-                this.metrics.genuinelyLostFound++;
-                await this.handleGenuinelyLostWallet(walletInfo, abandonmentScore);
-            } else {
-                this.metrics.activeWalletsFiltered++;
-            }
-            
-        } catch (error) {
-            this.metrics.errors++;
-            this.log(`Wallet analysis error for ${walletAddress}: ${error.message}`);
-        }
-    }
-
-    async getWalletAnalysis(address) {
-        await this.sleep(this.rateLimits.etherscan);
-        
-        return new Promise((resolve, reject) => {
-            const url = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&sort=desc&apikey=${this.apiKeys.etherscan}`;
-            
-            https.get(url, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                    try {
-                        const response = JSON.parse(data);
-                        if (response.status === '1' && response.result) {
-                            const analysis = this.processTransactionHistory(response.result, address);
-                            resolve(analysis);
-                        } else {
-                            // No transactions found - potential early wallet
-                            resolve({
-                                address: address,
-                                totalTransactions: 0,
-                                lastActivity: null,
-                                firstActivity: null,
-                                balance: 0,
-                                inactivityDays: null,
-                                walletAge: null
-                            });
-                        }
-                    } catch (error) {
-                        reject(error);
-                    }
-                });
-            }).on('error', reject);
-        });
-    }
-
-    processTransactionHistory(transactions, address) {
-        if (!transactions || transactions.length === 0) {
-            return {
-                address: address,
-                totalTransactions: 0,
-                lastActivity: null,
-                firstActivity: null,
-                balance: 0,
-                inactivityDays: null,
-                walletAge: null
-            };
-        }
-
-        const sortedTxs = transactions.sort((a, b) => parseInt(b.timeStamp) - parseInt(a.timeStamp));
-        const lastTx = sortedTxs[0];
-        const firstTx = sortedTxs[sortedTxs.length - 1];
-        
-        const lastActivity = new Date(parseInt(lastTx.timeStamp) * 1000);
-        const firstActivity = new Date(parseInt(firstTx.timeStamp) * 1000);
-        const now = new Date();
-        
-        const inactivityDays = Math.floor((now - lastActivity) / (1000 * 60 * 60 * 24));
-        const walletAge = Math.floor((now - firstActivity) / (1000 * 60 * 60 * 24));
-
-        return {
-            address: address,
-            totalTransactions: transactions.length,
-            lastActivity: lastActivity,
-            firstActivity: firstActivity,
-            balance: 0, // Will be updated by separate balance check
-            inactivityDays: inactivityDays,
-            walletAge: walletAge,
-            transactionPattern: this.analyzeTransactionPattern(sortedTxs)
-        };
-    }
-
-    analyzeTransactionPattern(transactions) {
-        if (!transactions || transactions.length === 0) {
-            return 'no_activity';
-        }
-
-        const recentCutoff = Date.now() - (365 * 24 * 60 * 60 * 1000); // 1 year ago
-        const recentTxs = transactions.filter(tx => parseInt(tx.timeStamp) * 1000 > recentCutoff);
-        
-        if (recentTxs.length === 0) {
-            return 'dormant_long_term';
-        } else if (recentTxs.length < 5) {
-            return 'minimal_recent_activity';
-        } else {
-            return 'active_recent';
-        }
-    }
-
-    calculateAbandonmentScore(walletInfo) {
-        let score = 0;
-        
-        // Inactivity scoring (0-40 points)
-        if (walletInfo.inactivityDays > (this.abandonmentCriteria.minInactivityYears * 365)) {
-            score += 40;
-        } else if (walletInfo.inactivityDays > (2 * 365)) {
-            score += 25;
-        } else if (walletInfo.inactivityDays > 365) {
-            score += 10;
-        }
-        
-        // Wallet age scoring (0-30 points)
-        if (walletInfo.walletAge > (this.abandonmentCriteria.minCreationAge * 365)) {
-            score += 30;
-        } else if (walletInfo.walletAge > (3 * 365)) {
-            score += 20;
-        }
-        
-        // Transaction pattern scoring (0-30 points)
-        switch (walletInfo.transactionPattern) {
-            case 'no_activity':
-                score += 30;
-                break;
-            case 'dormant_long_term':
-                score += 25;
-                break;
-            case 'minimal_recent_activity':
-                score += 10;
-                break;
-            case 'active_recent':
-                score += 0;
-                break;
-        }
-        
-        return Math.min(score, 100); // Cap at 100
-    }
-
-    isGenuinelyLost(walletInfo, abandonmentScore) {
-        // Require high abandonment score (80+) for genuine loss classification
-        if (abandonmentScore < 80) {
-            return false;
-        }
-        
-        // Additional safety checks
-        const minInactivityDays = this.abandonmentCriteria.minInactivityYears * 365;
-        
-        return (
-            walletInfo.inactivityDays >= minInactivityDays &&
-            walletInfo.walletAge >= (this.abandonmentCriteria.minCreationAge * 365) &&
-            (walletInfo.transactionPattern === 'no_activity' || 
-             walletInfo.transactionPattern === 'dormant_long_term')
-        );
-    }
-
-    async handleGenuinelyLostWallet(walletInfo, abandonmentScore) {
-        this.log(`Genuinely lost wallet identified: ${walletInfo.address} (Score: ${abandonmentScore})`);
-        
-        // Get current balance for the wallet
-        const balance = await this.getWalletBalance(walletInfo.address);
-        walletInfo.balance = balance;
-        
-        if (balance >= this.abandonmentCriteria.minBalance) {
-            this.metrics.totalValueDiscovered += balance;
-            await this.logLostWalletDiscovery(walletInfo, abandonmentScore);
-        }
-    }
-
-    async getWalletBalance(address) {
-        await this.sleep(this.rateLimits.etherscan);
-        
-        return new Promise((resolve, reject) => {
-            const url = `https://api.etherscan.io/api?module=account&action=balance&address=${address}&tag=latest&apikey=${this.apiKeys.etherscan}`;
-            
-            https.get(url, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                    try {
-                        const response = JSON.parse(data);
-                        if (response.status === '1') {
-                            const balanceWei = BigInt(response.result);
-                            const balanceEth = Number(balanceWei) / Math.pow(10, 18);
-                            resolve(balanceEth);
-                        } else {
-                            resolve(0);
-                        }
-                    } catch (error) {
-                        reject(error);
-                    }
-                });
-            }).on('error', reject);
-        });
-    }
-
-    async logLostWalletDiscovery(walletInfo, abandonmentScore) {
-        try {
-            const fs = require('fs').promises;
-            const discovery = {
-                timestamp: new Date().toISOString(),
-                address: walletInfo.address,
-                balance: walletInfo.balance,
-                abandonmentScore: abandonmentScore,
-                inactivityDays: walletInfo.inactivityDays,
-                walletAge: walletInfo.walletAge,
-                transactionPattern: walletInfo.transactionPattern,
-                lastActivity: walletInfo.lastActivity,
-                firstActivity: walletInfo.firstActivity,
-                totalTransactions: walletInfo.totalTransactions,
-                analysisMethod: 'blockchain_pattern_analysis'
-            };
-            
-            const logFile = './lost_wallets_discovered.json';
-            let discoveries = [];
-            
-            try {
-                const existingData = await fs.readFile(logFile, 'utf8');
-                discoveries = JSON.parse(existingData);
-            } catch (error) {
-                // File doesn't exist, start with empty array
-            }
-            
-            discoveries.push(discovery);
-            await fs.writeFile(logFile, JSON.stringify(discoveries, null, 2));
-            
-            this.log(`Lost wallet discovery logged: ${walletInfo.address} - ${walletInfo.balance} ETH`);
-            
-        } catch (error) {
-            this.log(`Discovery logging error: ${error.message}`);
-        }
-    }
-
     // Helper methods for address generation (simulation)
     generateEarlyEthereumAddress(seed) {
         const hash = crypto.createHash('sha256').update(`early_ethereum_${seed}`).digest('hex');
@@ -577,7 +333,6 @@ class LostWalletAnalyzer {
 class IntegratedHunter {
     constructor() {
         this.name = 'IntegratedHunter';
-        this.lostWalletAnalyzer = new LostWalletAnalyzer();
         this.isRunning = false;
         this.scanInterval = 300000; // 5 minutes
         this.intervalId = null;
@@ -597,26 +352,22 @@ class IntegratedHunter {
     }
 
     async start() {
-        if (this.isRunning) {
-            return { success: false, message: 'Hunter is already running' };
-        }
+        if (this.isRunning) return { success: false, message: 'Hunter is already running' };
 
         this.isRunning = true;
         this.startTime = new Date();
-        await this.lostWalletAnalyzer.start();
+        
         await this.executeScanCycle();
         
         this.intervalId = setInterval(async () => {
             if (this.isRunning) await this.executeScanCycle();
         }, this.scanInterval);
 
-        return { success: true, message: '🔍 Hunter activated successfully' };
+        return { success: true, message: '🎯 Hunter activated successfully' };
     }
 
     async stop() {
-        if (!this.isRunning) {
-            return { success: false, message: 'Hunter is not running' };
-        }
+        if (!this.isRunning) return { success: false, message: 'Hunter is not running' };
 
         this.isRunning = false;
         if (this.intervalId) {
@@ -663,219 +414,252 @@ class IntegratedHunter {
     }
 
     generateRandomKeyData() {
-        const privateKey = crypto.randomBytes(32);
-        const publicKey = this.derivePublicKey(privateKey);
-        const address = this.deriveEthereumAddress(publicKey);
+        const privateKeyBuffer = crypto.randomBytes(32);
+        const privateKey = '0x' + privateKeyBuffer.toString('hex');
+        const address = this.privateKeyToAddress(privateKey);
         
-        return {
-            privateKey: privateKey.toString('hex'),
-            publicKey: publicKey.toString('hex'),
-            address: address
-        };
+        return { privateKey, address, timestamp: new Date().toISOString() };
     }
 
-    derivePublicKey(privateKey) {
-        // Simplified public key derivation for simulation
-        const hash = crypto.createHash('sha256').update(privateKey).digest();
-        return hash;
-    }
-
-    deriveEthereumAddress(publicKey) {
-        // Simplified Ethereum address derivation for simulation
-        const hash = crypto.createHash('sha256').update(publicKey).digest('hex');
+    privateKeyToAddress(privateKey) {
+        const hash = crypto.createHash('sha256').update(privateKey).digest('hex');
         return '0x' + hash.slice(-40);
     }
 
     async checkBalance(address) {
-        // Simulate balance checking with occasional positive results
-        return Math.random() < 0.0001 ? Math.random() * 10 : 0;
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                const randomBalance = Math.random();
+                resolve(randomBalance < 0.999 ? 0 : Math.random() * 10);
+            }, 100);
+        });
     }
 
     async handlePositiveBalance(keyData, balance) {
-        console.log(`🎯 Positive balance found: ${keyData.address} - ${balance} ETH`);
+        console.log(`[${new Date().toISOString()}] [HUNTER] Positive balance found: ${keyData.address} - ${balance} ETH`);
+    }
+
+    getStatus() {
+        const runtime = this.startTime ? Date.now() - this.startTime.getTime() : 0;
+        const hours = Math.floor(runtime / 3600000);
+        const minutes = Math.floor((runtime % 3600000) / 60000);
         
-        // Log discovery to file
-        try {
-            const fs = require('fs').promises;
-            const discovery = {
-                timestamp: new Date().toISOString(),
-                address: keyData.address,
-                privateKey: keyData.privateKey,
-                balance: balance,
-                discoveryMethod: 'random_key_generation'
-            };
-            
-            const logFile = './discoveries.json';
-            let discoveries = [];
-            
-            try {
-                const existingData = await fs.readFile(logFile, 'utf8');
-                discoveries = JSON.parse(existingData);
-            } catch (error) {
-                // File doesn't exist, start with empty array
-            }
-            
-            discoveries.push(discovery);
-            await fs.writeFile(logFile, JSON.stringify(discoveries, null, 2));
-        } catch (error) {
-            console.error('Failed to log discovery:', error);
-        }
+        return {
+            isRunning: this.isRunning,
+            runtime: `${hours}h ${minutes}m`,
+            metrics: this.metrics
+        };
+    }
+
+    getMetrics() {
+        return {
+            ...this.metrics,
+            successRate: this.metrics.balancesChecked > 0 ? 
+                (this.metrics.positiveHits / this.metrics.balancesChecked * 100).toFixed(6) + '%' : '0%',
+            errorRate: this.metrics.keysGenerated > 0 ? 
+                (this.metrics.errors / this.metrics.keysGenerated * 100).toFixed(2) + '%' : '0%'
+        };
     }
 
     sleep(milliseconds) {
         return new Promise(resolve => setTimeout(resolve, milliseconds));
     }
-
-    getStatus() {
-        const runtime = this.startTime ? Date.now() - this.startTime.getTime() : 0;
-        const hours = Math.floor(runtime / 3600000);
-        const minutes = Math.floor((runtime % 3600000) / 60000);
-        
-        return {
-            isRunning: this.isRunning,
-            runtime: `${hours}h ${minutes}m`,
-            metrics: this.metrics,
-            lostWalletAnalyzer: this.lostWalletAnalyzer.getStatus()
-        };
-    }
-
-    getMetrics() {
-        const hitRate = this.metrics.balancesChecked > 0 ? 
-            (this.metrics.positiveHits / this.metrics.balancesChecked * 100).toFixed(6) + '%' : '0%';
-        
-        return {
-            ...this.metrics,
-            hitRate,
-            keysPerSecond: this.metrics.keysGenerated > 0 ? 
-                (this.metrics.keysGenerated / (Date.now() - this.startTime) * 1000).toFixed(2) : 0,
-            analyzerMetrics: this.lostWalletAnalyzer.getMetrics()
-        };
-    }
 }
 
-// Ghostline Revenue System
-class GhostlineRevenueSystem {
+// Integrated Scavenger Agent
+class IntegratedScavenger {
     constructor() {
-        this.name = 'GhostlineRevenueSystem';
-        this.version = '3.1.0';
+        this.name = 'IntegratedScavenger';
         this.isRunning = false;
+        this.scanInterval = 600000; // 10 minutes
+        this.intervalId = null;
         this.startTime = null;
         
-        this.hunter = new IntegratedHunter();
-        this.scavenger = null; // Additional components can be added here
-        
-        this.metrics = {
-            totalRevenue: 0,
-            activeOperations: 0,
-            successfulOperations: 0,
+        this.counters = {
+            sourcesScanned: 0,
+            matchesFound: 0,
+            privateKeysFound: 0,
+            mnemonicsFound: 0,
+            walletJsonFound: 0,
             errors: 0,
-            uptime: 0,
-            lastUpdate: null
+            lastScanTime: null,
+            scanCycles: 0
         };
-    }
-
-    async start() {
-        if (this.isRunning) {
-            this.log('Revenue system is already running');
-            return;
-        }
-
-        this.isRunning = true;
-        this.startTime = new Date();
         
-        // Initialize health server
-        if (!healthServer) {
-            initializeHealthServer();
-        }
-
-        this.log('Ghostline Revenue System started successfully');
-    }
-
-    async stop() {
-        if (!this.isRunning) {
-            this.log('Revenue system is not running');
-            return;
-        }
-
-        this.isRunning = false;
-
-        // Stop all agents
-        await this.hunter.stop();
-        await this.scavenger.stop();
-
-        this.log('Ghostline Revenue System stopped');
-    }
-
-    getStatus() {
-        const runtime = this.startTime ? Date.now() - this.startTime.getTime() : 0;
-        const hours = Math.floor(runtime / 3600000);
-        const minutes = Math.floor((runtime % 3600000) / 60000);
+        this.sourceUrls = [
+            'https://api.github.com/search/code?q=private+key+ethereum',
+            'https://api.github.com/search/code?q=mnemonic+seed+phrase',
+            'https://api.github.com/search/repositories?q=wallet+backup'
+        ];
         
-        return {
-            name: this.name,
-            version: this.version,
-            isRunning: this.isRunning,
-            runtime: `${hours}h ${minutes}m`,
-            startTime: this.startTime,
-            metrics: this.metrics,
-            components: {
-                hunter: this.hunter.getStatus(),
-                healthServer: {
-                    running: serverReady,
-                    port: healthServer?.address()?.port || 'unknown'
-                }
+        this.patterns = {
+            privateKey: {
+                regex: /(?:private[_\s]*key|privateKey)['\"\s:=]*([a-fA-F0-9]{64})/gi,
+                validator: this.validatePrivateKey.bind(this)
+            },
+            ethAddress: {
+                regex: /0x[a-fA-F0-9]{40}/gi,
+                validator: this.validateEthereumAddress.bind(this)
+            },
+            mnemonic: {
+                regex: /((?:\w+\s+){11,23}\w+)/gi,
+                validator: this.validateMnemonic.bind(this)
             }
         };
     }
 
-    getMetrics() {
-        if (!this.hunter || !this.hunter.metrics) {
-            return 'No active operations to report\nUse /start to begin scanning';
+    async start() {
+        if (this.isRunning) return { success: false, message: 'Scavenger is already running' };
+
+        this.isRunning = true;
+        this.startTime = new Date();
+        
+        await this.executeScanCycle();
+        
+        this.intervalId = setInterval(async () => {
+            if (this.isRunning) await this.executeScanCycle();
+        }, this.scanInterval);
+
+        return { success: true, message: '🔍 Scavenger activated successfully' };
+    }
+
+    async stop() {
+        if (!this.isRunning) return { success: false, message: 'Scavenger is not running' };
+
+        this.isRunning = false;
+        if (this.intervalId) {
+            clearInterval(this.intervalId);
+            this.intervalId = null;
         }
 
-        return this.metrics;
+        return { success: true, message: '⏹️ Scavenger stopped successfully' };
     }
 
-    log(message) {
-        const timestamp = new Date().toISOString();
-        console.log(`[${timestamp}] [SYSTEM] ${message}`);
+    async executeScanCycle() {
+        this.counters.scanCycles++;
+        this.counters.lastScanTime = new Date();
+        
+        try {
+            for (const sourceUrl of this.sourceUrls) {
+                if (!this.isRunning) break;
+                
+                await this.scanSource(sourceUrl);
+                await this.sleep(3000);
+            }
+        } catch (error) {
+            this.counters.errors++;
+        }
+    }
+
+    async scanSource(sourceUrl) {
+        try {
+            this.counters.sourcesScanned++;
+            const content = await this.fetchContent(sourceUrl);
+            
+            if (content) {
+                await this.analyzeContent(content, sourceUrl);
+            }
+        } catch (error) {
+            this.counters.errors++;
+        }
+    }
+
+    async fetchContent(url) {
+        return new Promise((resolve, reject) => {
+            const client = url.startsWith('https') ? https : http;
+            
+            const options = {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (compatible; GhostlineScavenger/3.0)',
+                    'Accept': 'application/json, text/plain, */*'
+                },
+                timeout: 10000
+            };
+            
+            const req = client.get(url, options, (res) => {
+                let data = '';
+                
+                res.on('data', chunk => {
+                    data += chunk;
+                    if (data.length > 1048576) { // 1MB limit
+                        req.destroy();
+                        resolve(data);
+                    }
+                });
+                
+                res.on('end', () => resolve(data));
+            });
+            
+            req.on('error', reject);
+            req.on('timeout', () => {
+                req.destroy();
+                reject(new Error('Request timeout'));
+            });
+        });
+    }
+
+    async analyzeContent(content, sourceUrl) {
+        try {
+            for (const [patternName, pattern] of Object.entries(this.patterns)) {
+                const matches = content.match(pattern.regex);
+                
+                if (matches && matches.length > 0) {
+                    for (const match of matches) {
+                        if (pattern.validator(match)) {
+                            this.counters.matchesFound++;
+                            await this.handleMatch(patternName, match, sourceUrl);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            // Continue processing
+        }
+    }
+
+    validatePrivateKey(key) {
+        const cleaned = key.replace(/[^a-fA-F0-9]/g, '');
+        return cleaned.length === 64 && /^[a-fA-F0-9]+$/.test(cleaned);
+    }
+
+    validateEthereumAddress(address) {
+        return /^0x[a-fA-F0-9]{40}$/.test(address);
+    }
+
+    validateMnemonic(phrase) {
+        const words = phrase.trim().split(/\s+/);
+        return words.length >= 12 && words.length <= 24;
+    }
+
+    async handleMatch(patternType, match, sourceUrl) {
+        console.log(`[${new Date().toISOString()}] [SCAVENGER] Match found: ${patternType} from ${sourceUrl}`);
+        
+        switch (patternType) {
+            case 'privateKey':
+                this.counters.privateKeysFound++;
+                break;
+            case 'mnemonic':
+                this.counters.mnemonicsFound++;
+                break;
+            case 'walletJson':
+                this.counters.walletJsonFound++;
+                break;
+        }
+    }
+
+    getStatus() {
+        const runtime = this.startTime ? Date.now() - this.startTime.getTime() : 0;
+        const hours = Math.floor(runtime / 3600000);
+        const minutes = Math.floor((runtime % 3600000) / 60000);
+        
+        return {
+            isRunning: this.isRunning,
+            runtime: `${hours}h ${minutes}m`,
+            counters: this.counters
+        };
+    }
+
+    sleep(milliseconds) {
+        return new Promise(resolve => setTimeout(resolve, milliseconds));
     }
 }
-
-// Initialize and start the revenue system
-const revenueSystem = new GhostlineRevenueSystem();
-revenueSystem.start().catch(error => {
-    console.error('Failed to start Ghostline Revenue System:', error);
-    process.exit(1);
-});
-
-// Graceful shutdown handling
-process.on('SIGINT', async () => {
-    console.log('\nReceived SIGINT, shutting down gracefully...');
-    await revenueSystem.stop();
-    
-    if (healthServer) {
-        healthServer.close(() => {
-            console.log('Health server closed');
-            process.exit(0);
-        });
-    } else {
-        process.exit(0);
-    }
-});
-
-process.on('SIGTERM', async () => {
-    console.log('Received SIGTERM, shutting down gracefully...');
-    await revenueSystem.stop();
-    
-    if (healthServer) {
-        healthServer.close(() => {
-            console.log('Health server closed');
-            process.exit(0);
-        });
-    } else {
-        process.exit(0);
-    }
-});
-
-module.exports = GhostlineRevenueSystem

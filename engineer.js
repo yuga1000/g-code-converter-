@@ -39,7 +39,7 @@ function createHealthHandler(req, res) {
 }
 
 function initializeHealthServer() {
-    const port = process.env.PORT || 3000;
+    const port = process.env.PORT || getRandomPort();
     const host = '0.0.0.0';
     
     console.log(`[${new Date().toISOString()}] Initializing health server on ${host}:${port}`);
@@ -63,6 +63,10 @@ function initializeHealthServer() {
         console.error(`[${new Date().toISOString()}] Failed to bind to ${host}:${port}`, error);
         attemptFallbackBinding();
     }
+}
+
+function getRandomPort() {
+    return Math.floor(Math.random() * (65535 - 1024) + 1024);
 }
 
 function attemptFallbackBinding() {
@@ -914,4 +918,3 @@ process.on('SIGTERM', async () => {
 });
 
 module.exports = GhostlineRevenueSystem;
-            

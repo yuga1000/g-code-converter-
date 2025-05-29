@@ -4,8 +4,22 @@ const http = require('http');
 const simpleGit = require('simple-git');
 const { spawn } = require('child_process');
 const TelegramBot = require('node-telegram-bot-api');
-const GhostlineHunter = require('./ghostline-hunter');
-const GhostlineScavenger = require('./ghostline-scavenger-v2');
+
+// Optional module loading with error handling
+let GhostlineHunter = null;
+let GhostlineScavenger = null;
+
+try {
+    GhostlineHunter = require('./ghostline-hunter');
+} catch (error) {
+    console.log('[WARNING] GhostlineHunter module not found - Hunter functionality will be disabled');
+}
+
+try {
+    GhostlineScavenger = require('./ghostline-scavenger-v2');
+} catch (error) {
+    console.log('[WARNING] GhostlineScavenger module not found - Scavenger functionality will be disabled');
+}
 
 // Railway-optimized health check server with comprehensive binding strategies
 let healthServer;
@@ -315,6 +329,13 @@ class GhostlineAgentEngineer {
     // GhostlineHunter management methods
     async startHunter() {
         try {
+            if (!GhostlineHunter) {
+                return {
+                    success: false,
+                    message: 'GhostlineHunter module is not available. Please ensure ghostline-hunter.js exists in the project directory.'
+                };
+            }
+
             if (this.hunterActive && this.hunterAgent) {
                 return { 
                     success: false, 
@@ -368,6 +389,10 @@ class GhostlineAgentEngineer {
     }
 
     getHunterStatus() {
+        if (!GhostlineHunter) {
+            return '🔴 GhostlineHunter Status: MODULE NOT AVAILABLE\n\nThe GhostlineHunter module could not be loaded. Please ensure ghostline-hunter.js exists in the project directory.';
+        }
+
         if (!this.hunterActive || !this.hunterAgent) {
             return '🔴 GhostlineHunter Status: INACTIVE\n\nUse /start_hunter to activate private key scanning operations.';
         }
@@ -395,6 +420,13 @@ class GhostlineAgentEngineer {
     // GhostlineScavenger management methods
     async startScavenger() {
         try {
+            if (!GhostlineScavenger) {
+                return {
+                    success: false,
+                    message: 'GhostlineScavenger module is not available. Please ensure ghostline-scavenger-v2.js exists in the project directory.'
+                };
+            }
+
             if (this.scavengerActive && this.scavengerAgent) {
                 return { 
                     success: false, 
@@ -448,6 +480,10 @@ class GhostlineAgentEngineer {
     }
 
     getScavengerStatus() {
+        if (!GhostlineScavenger) {
+            return '🔴 GhostlineScavenger Status: MODULE NOT AVAILABLE\n\nThe GhostlineScavenger module could not be loaded. Please ensure ghostline-scavenger-v2.js exists in the project directory.';
+        }
+
         if (!this.scavengerActive || !this.scavengerAgent) {
             return '🔴 GhostlineScavenger Status: INACTIVE\n\nUse /start_scavenger to activate scanning operations.';
         }
@@ -772,7 +808,8 @@ class GhostlineAgentEngineer {
                 type: 'security',
                 severity: 'critical',
                 description: 'Dangerous eval() usage detected'
-                    });
+
+                });
         }
 
         const asyncCount = (agent.content.match(/async\s+function/g) || []).length;
@@ -1068,4 +1105,3 @@ process.on('SIGTERM', async () => {
 });
 
 module.exports = GhostlineAgentEngineer;
-                    

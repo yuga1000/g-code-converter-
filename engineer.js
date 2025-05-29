@@ -92,6 +92,7 @@ function attemptFallbackBinding() {
 class IntegratedHunter {
     constructor() {
         this.name = 'IntegratedHunter';
+        this.lostWalletAnalyzer = new LostWalletAnalyzer();
         this.isRunning = false;
         this.scanInterval = 300000; // 5 minutes
         this.intervalId = null;
@@ -115,7 +116,7 @@ class IntegratedHunter {
 
         this.isRunning = true;
         this.startTime = new Date();
-        
+        await this.lostWalletAnalyzer.start();
         await this.executeScanCycle();
         
         this.intervalId = setInterval(async () => {
@@ -928,6 +929,7 @@ getOperationalStatus()
         this.isRunning = false;
         
         // Stop all agents
+       await this.lostWalletAnalyzer.stop(); 
         await this.hunter.stop();
         await this.scavenger.stop();
         

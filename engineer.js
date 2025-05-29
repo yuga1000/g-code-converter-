@@ -21,7 +21,7 @@ function createHealthHandler(req, res) {
         status: 'healthy',
         timestamp: timestamp,
         service: 'ghostline-revenue-system',
-        version: '3.0.0',
+        version: '3.1.0',
         uptime: process.uptime(),
         ready: serverReady
     };
@@ -423,9 +423,7 @@ class IntegratedScavenger {
     }
 }
 
-const crypto = require('crypto');
-const https = require('https');
-
+// Multi-Chain Asset Validation System
 class MultiChainValidator {
     constructor(options = {}) {
         this.name = 'MultiChainValidator';
@@ -771,8 +769,6 @@ class MultiChainValidator {
     }
 }
 
-module.exports = MultiChainValidator;
-
 // Main Revenue System
 class GhostlineRevenueSystem {
     constructor() {
@@ -782,8 +778,9 @@ class GhostlineRevenueSystem {
         // Initialize integrated agents
         this.hunter = new IntegratedHunter();
         this.scavenger = new IntegratedScavenger();
+        this.validator = new MultiChainValidator();
         
-        this.log('Ghostline Revenue System v3.0 initialized');
+        this.log('Ghostline Revenue System v3.1 initialized with validation capabilities');
         
         // Initialize Telegram bot if token is available
         if (process.env.TELEGRAM_TOKEN) {
@@ -846,8 +843,8 @@ class GhostlineRevenueSystem {
         
         this.log('Telegram bot initialized with streamlined interface');
     }
-
-    getOperationalStatus() {
+getOperationalStatus()
+    {
         const hunterStatus = this.hunter.getStatus();
         const scavengerStatus = this.scavenger.getStatus();
         
@@ -974,4 +971,4 @@ process.on('SIGTERM', async () => {
     }
 });
 
-module.exports = GhostlineRevenueSystem;  
+module.exports = GhostlineRevenueSystem;

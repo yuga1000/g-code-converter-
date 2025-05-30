@@ -1,6 +1,6 @@
 // Telegram Interface V4.0 - Enhanced Security & Error Handling
 // File: modules/TelegramInterface.js
-
+const TelegramBot = require('node-telegram-bot-api');
 class TelegramInterface {
     constructor(system) {
         this.system = system;
@@ -94,11 +94,8 @@ class TelegramInterface {
             
             // For production, you would use actual Telegram Bot API
             // Here we simulate the connection
-            this.bot = {
-                token: this.security.hashForLogging(botToken),
-                connected: true,
-                startTime: new Date()
-            };
+            const TelegramBot = require('node-telegram-bot-api');
+this.bot = new TelegramBot(botToken, { polling: true });
             
             this.setupEventHandlers();
             this.startRateLimitManager();

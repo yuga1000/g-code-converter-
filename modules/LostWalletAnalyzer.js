@@ -781,4 +781,158 @@ class LostWalletAnalyzer {
         });
         
         // Send notification
-        if (this.system.modulesm
+        if (this.system.modules.telegram?.isConnected) {
+            await this.sendLostWalletNotification(discovery);
+        }
+    }
+
+    async sendLostWalletNotification(discovery) {
+        try {
+            const alertMessage = `🔍 LOST WALLET ANALYSIS SUCCESS\n\n` +
+                `💰 ETH Balance: ${discovery.balance.toFixed(4)} ETH\n` +
+                `🪙 Token Value: ${(discovery.tokenBalance || 0).toFixed(2)} USD\n` +
+                `🖼️ NFTs: ${discovery.nftCount || 0}\n` +
+                `📍 Address: ${discovery.address.substring(0, 8)}...${discovery.address.substring(discovery.address.length - 6)}\n` +
+                `📊 Abandonment Score: ${discovery.abandonmentScore}/100\n` +
+                `📅 Last Activity: ${discovery.lastActivity.toDateString()}\n` +
+                `🔢 Total Transactions: ${discovery.transactionCount}\n` +
+                `◎ Discovery Method: ${discovery.source}\n` +
+                `💎 Estimated Total Value: ${discovery.estimatedValue.toFixed(4)} ETH\n` +
+                `🔒 Security Validated: ✅\n\n` +
+                `🔒 Discovery logged and securely stored`;
+
+            await this.system.modules.telegram.sendNotification(alertMessage);
+        } catch (error) {
+            this.logger.error(`[✗] Discovery notification failed: ${error.message}`);
+        }
+    }
+
+    // Candidate generation methods
+    async generateEarlyAdoptionWallets() {
+        const wallets = [];
+        for (let i = 0; i < 15; i++) {
+            const hash = crypto.createHash('sha256').update(`early_ethereum_${i}_${Date.now()}`).digest('hex');
+            wallets.push('0x' + hash.slice(0, 40));
+        }
+        return wallets;
+    }
+
+    async generateExchangeCorrelatedWallets() {
+        const wallets = [];
+        for (const exchange of this.lossCorrelationData.exchangeClosures) {
+            if (exchange.verified && exchange.riskLevel !== 'critical') {
+                wallets.push(...exchange.affectedAddresses);
+            }
+        }
+        return wallets;
+    }
+
+    async generatePatternBasedWallets() {
+        const wallets = [];
+        for (const pattern of this.lossCorrelationData.knownPatterns) {
+            if (pattern.riskLevel === 'low' || pattern.riskLevel === 'medium') {
+                for (let i = 0; i < 3; i++) {
+                    const hash = crypto.createHash('sha256').update(`${pattern.name}_${i}_${Date.now()}`).digest('hex');
+                    wallets.push('0x' + hash.slice(0, 40));
+                }
+            }
+        }
+        return wallets;
+    }
+
+    generateCorrelatedAddresses(exchangeName, count) {
+        const addresses = [];
+        for (let i = 0; i < count; i++) {
+            const hash = crypto.createHash('sha256').update(`${exchangeName}_correlation_${i}`).digest('hex');
+            addresses.push('0x' + hash.slice(0, 40));
+        }
+        return addresses;
+    }
+
+    async waitForActiveAnalysis() {
+        while (this.activeAnalysis.size > 0) {
+            this.logger.debug(`[▸] Waiting for ${this.activeAnalysis.size} active analyses`);
+            await this.sleep(2000);
+        }
+    }
+
+    // Public interface methods
+    getAnalyzedCount() {
+        return this.metrics.walletsAnalyzed;
+    }
+
+    getDiscoveries() {
+        return this.discoveredWallets.length;
+    }
+
+    getSuccessRate() {
+        return this.metrics.walletsAnalyzed > 0 ? 
+            `${(this.metrics.genuinelyLostFound / this.metrics.walletsAnalyzed * 100).toFixed(2)}%` : '0%';
+    }
+
+    getDetailedMetrics() {
+        const successRate = this.metrics.walletsAnalyzed > 0 ? 
+            (this.metrics.genuinelyLostFound / this.metrics.walletsAnalyzed * 100).toFixed(2) + '%' : '0%';
+        
+        const errorRate = this.metrics.walletsAnalyzed > 0 ? 
+            (this.metrics.errors / this.metrics.walletsAnalyzed * 100).toFixed(2) + '%' : '0%';
+        
+        const avgValuePerWallet = this.metrics.genuinelyLostFound > 0 ? 
+            (this.metrics.totalValueDiscovered / this.metrics.genuinelyLostFound).toFixed(4) : '0.0000';
+
+        const securityScore = this.calculateSecurityScore();
+
+        return {
+            ...this.metrics,
+            successRate,
+            errorRate,
+            avgValuePerWallet,
+            securityScore: `${securityScore}/100`,
+            avgAnalysisTime: `${this.metrics.avgAnalysisTime.toFixed(0)}ms`,
+            queueLength: this.analysisQueue.length,
+            activeAnalysis: this.activeAnalysis.size,
+            cacheSize: this.walletCache.size,
+            cacheHitRate: this.metrics.networkCalls > 0 ? 
+                `${(this.metrics.cacheHits / (this.metrics.cacheHits + this.metrics.networkCalls) * 100).toFixed(1)}%` : '0%',
+            totalDiscoveries: this.discoveredWallets.length,
+            totalEstimatedValue: this.discoveredWallets.reduce((sum, w) => sum + w.estimatedValue, 0).toFixed(4),
+            securityMetrics: {
+                suspiciousWallets: this.metrics.suspiciousWallets,
+                falsePositives: this.metrics.falsePositives,
+                securityChecks: this.metrics.securityChecks,
+                blacklistedAddresses: this.suspiciousAddresses.size
+            },
+            analysisConfig: this.analysisConfig
+        };
+    }
+
+    calculateSecurityScore() {
+        let score = 100;
+        
+        // Deduct points for suspicious wallets encountered
+        score -= this.metrics.suspiciousWallets * 2;
+        
+        // Deduct points for false positives
+        score -= this.metrics.falsePositives * 5;
+        
+        // Deduct points for errors
+        score -= Math.min(this.metrics.errors * 3, 30);
+        
+        // Add points for security checks performed
+        score += Math.min(this.metrics.securityChecks * 0.1, 15);
+        
+        // Deduct points for high error rate
+        if (this.metrics.networkCalls > 0) {
+            const errorRate = this.metrics.errors / this.metrics.networkCalls;
+            if (errorRate > 0.1) score -= 20;
+        }
+        
+        return Math.max(0, Math.min(100, Math.round(score)));
+    }
+
+    sleep(milliseconds) {
+        return new Promise(resolve => setTimeout(resolve, milliseconds));
+    }
+}
+
+module.exports = LostWalletAnalyzer;

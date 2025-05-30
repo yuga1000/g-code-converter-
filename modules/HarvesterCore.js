@@ -32,7 +32,7 @@ class HarvesterCore {
         this.platforms = {
             microworkers: {
                 name: 'Microworkers',
-                baseUrl: 'https://api.microworkers.com/v1',
+                baseUrl: 'https://ttv.microworkers.com/api/v2', // ✅ ИСПРАВЛЕНО
                 config: this.config.getApiConfig('microworkers'),
                 enabled: false,
                 lastCheck: null,
@@ -333,10 +333,11 @@ class HarvesterCore {
         }
     }
 
+    // ✅ ИСПРАВЛЕННЫЙ МЕТОД
     async testMicroworkersAPI(platform) {
-        const endpoint = '/account/balance';
+        const endpoint = '/accounts/me';
         const headers = {
-            'Authorization': `Bearer ${platform.config.apiKey}`,
+            'MicroworkersApiKey': platform.config.apiKey,
             'Content-Type': 'application/json',
             'User-Agent': 'GhostlineV4/1.0'
         };
@@ -346,7 +347,7 @@ class HarvesterCore {
             
             if (response.statusCode === 200) {
                 const data = JSON.parse(response.body);
-                this.logger.info(`[MW] Balance: $${data.balance || 'N/A'}`);
+                this.logger.info(`[MW] Balance: $${data.moneyBalance || 'N/A'}`);
                 return { success: true, data: data };
             } else if (response.statusCode === 401) {
                 return { success: false, error: 'Invalid API credentials' };
@@ -472,11 +473,12 @@ class HarvesterCore {
         }
     }
 
+    // ✅ ИСПРАВЛЕННЫЙ МЕТОД
     async fetchMicroworkersTasks() {
         const platform = this.platforms.microworkers;
         const endpoint = '/campaigns/available';
         const headers = {
-            'Authorization': `Bearer ${platform.config.apiKey}`,
+            'MicroworkersApiKey': platform.config.apiKey,
             'Content-Type': 'application/json'
         };
         
@@ -841,7 +843,7 @@ class HarvesterCore {
                 }
             };
             
-            if (data && method !== 'GET') {
+             if (data && method !== 'GET') {
                 const postData = typeof data === 'string' ? data : JSON.stringify(data);
                 options.headers['Content-Length'] = Buffer.byteLength(postData);
                 
@@ -872,9 +874,6 @@ class HarvesterCore {
             req.end();
         });
     }
-
-    // Rest of the methods remain similar but with REAL API calls...
-    // (Keeping existing methods for security, validation, metrics, etc.)
 
     async start() {
         if (this.isRunning) {
@@ -922,12 +921,120 @@ class HarvesterCore {
         }
     }
 
+    async executeMainLoop() {
+        // Placeholder for main execution loop
+        this.logger.debug('[▸] Executing main harvester loop...');
+        
+        // Process queued tasks
+        if (this.taskQueue.length > 0) {
+            const task = this.taskQueue.shift();
+            await this.executeTask(task);
+        }
+        
+        // Refresh task queue if needed
+        if (this.taskQueue.length < 5) {
+            await this.loadProductionTasks();
+        }
+    }
+
+    async handleTaskSuccess(task, result, duration) {
+        this.metrics.tasksSuccessful++;
+        this.metrics.totalEarnings += task.reward;
+        this.metrics.lastSuccessTime = new Date();
+        
+        this.completedTasks.push({
+            ...task,
+            result: result,
+            duration: duration,
+            completedAt: new Date()
+        });
+        
+        this.logger.success(`[✓] Task completed: ${task.title} - ${task.reward} ETH`);
+    }
+
+    async handleTaskFailure(task, error, duration) {
+        this.metrics.tasksFailed++;
+        this.metrics.lastErrorTime = new Date();
+        
+        this.failedTasks.push({
+            ...task,
+            error: error,
+            duration: duration,
+            failedAt: new Date()
+        });
+        
+        this.logger.error(`[✗] Task failed: ${task.title} - ${error}`);
+    }
+
+    // Mock methods for missing functionality
+    async acceptMicroworkersTask(task) { return true; }
+    async claimClickworkerTask(task) { return true; }
+    async startSpare5Task(task) { return true; }
+    async generateCompletionProof(task) { return { proof: 'generated' }; }
+    async generateClickworkerDeliverable(task) { return { deliverable: 'generated' }; }
+    async generateSpare5Submission(task) { return { submission: 'generated' }; }
+    async submitMicroworkersResult(task, result) { return true; }
+    async submitClickworkerResult(task, result) { return true; }
+    async submitSpare5Result(task, result) { return true; }
+    async performWebsiteReview(task) { await this.sleep(1000); }
+    async performSocialMediaTask(task) { await this.sleep(1000); }
+    async performDataEntry(task) { await this.sleep(1000); }
+    async performSurvey(task) { await this.sleep(1000); }
+    async performContentReview(task) { await this.sleep(1000); }
+    async performGenericTask(task) { await this.sleep(1000); }
+
+    // Public interface methods
+    getTotalEarnings() { return this.metrics.totalEarnings; }
+    getTotalTasks() { return this.metrics.tasksCompleted; }
+    getActiveTasks() { return this.activeTasks.size; }
+    getPendingEarnings() { return this.metrics.pendingEarnings; }
+    getSuccessRate() { 
+        const total = this.metrics.tasksSuccessful + this.metrics.tasksFailed;
+        return total > 0 ? `${(this.metrics.tasksSuccessful / total * 100).toFixed(1)}%` : '0%';
+    }
+    
+    getDetailedMetrics() {
+        return {
+            ...this.metrics,
+            successRate: this.getSuccessRate(),
+            platforms: Object.fromEntries(
+                Object.entries(this.platforms).map(([name, platform]) => [
+                    name, 
+                    {
+                        enabled: platform.enabled,
+                        taskCount: platform.taskCount,
+                        successRate: platform.successRate
+                    }
+                ])
+            )
+        };
+    }
+
+    async stop() {
+        if (!this.isRunning) {
+            return { success: false, message: '[○] HarvesterCore is not running' };
+        }
+
+        try {
+            this.isRunning = false;
+            
+            if (this.intervalId) {
+                clearInterval(this.intervalId);
+                this.intervalId = null;
+            }
+            
+            this.logger.success('[◯] HarvesterCore stopped gracefully');
+            return { success: true, message: '[◯] HarvesterCore stopped successfully' };
+            
+        } catch (error) {
+            this.logger.error(`[✗] Stop failed: ${error.message}`);
+            return { success: false, message: error.message };
+        }
+    }
+
     sleep(milliseconds) {
         return new Promise(resolve => setTimeout(resolve, milliseconds));
     }
-
-    // Include all other existing methods (metrics, validation, etc.)
-    // ... (keeping them as they are since they're already good)
 }
 
 module.exports = HarvesterCore;

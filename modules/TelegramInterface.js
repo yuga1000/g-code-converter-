@@ -1,4 +1,4 @@
-// // Telegram Interface V4.0 - Real API Implementation
+// Telegram Interface V4.0 - Real API Implementation
 // File: modules/TelegramInterface.js
 
 const TelegramBot = require('node-telegram-bot-api');

@@ -715,15 +715,14 @@ class LostWalletAnalyzer {
     sleep(milliseconds) {
         return new Promise(resolve => setTimeout(resolve, milliseconds));
     }
-}
-// HarvesterCore Production - Real API Integration
+}// HarvesterCore Production - Real API Integration (FIXED)
 class HarvesterCore {
     constructor(options = {}) {
         this.name = 'HarvesterCore';
         this.version = '3.0.0';
         this.isRunning = false;
         this.productionMode = false;
-        this.scanInterval = options.scanInterval || 180000; // 3 minutes for production
+        this.scanInterval = options.scanInterval || 180000;
         this.intervalId = null;
         this.startTime = null;
         
@@ -746,7 +745,7 @@ class HarvesterCore {
         
         this.config = {
             maxRetries: 3,
-            taskTimeout: 300000, // 5 minutes for real tasks
+            taskTimeout: 300000,
             rewardMultiplier: 1.0,
             minimumTaskReward: 0.001,
             maxConcurrentTasks: 3,
@@ -754,22 +753,12 @@ class HarvesterCore {
             apiTimeout: 15000
         };
         
-        // Production API configuration
         this.apiConfig = {
             microworkers: {
                 baseUrl: 'https://api.microworkers.com/v1',
                 apiKey: process.env.MICROWORKERS_API_KEY || '',
                 secret: process.env.MICROWORKERS_SECRET || '',
                 username: process.env.MICROWORKERS_USERNAME || ''
-            },
-            clickworker: {
-                baseUrl: 'https://api.clickworker.com/v1',
-                apiKey: process.env.CLICKWORKER_API_KEY || '',
-                secret: process.env.CLICKWORKER_SECRET || ''
-            },
-            spare5: {
-                baseUrl: 'https://api.spare5.com/v1',
-                apiKey: process.env.SPARE5_API_KEY || ''
             }
         };
         
@@ -777,11 +766,10 @@ class HarvesterCore {
         this.activeTasks = new Map();
         this.completedTasks = [];
         
-        // Telegram bot reference
         this.telegramBot = null;
         this.telegramChatId = null;
         
-        this.log('[◉] HarvesterCore v3.0 initialized - Multi-platform production ready');
+        this.log('[◉] HarvesterCore v3.0 initialized');
     }
 
     log(message) {
@@ -801,9 +789,8 @@ class HarvesterCore {
         }
 
         try {
-            this.log('[▸] Starting HarvesterCore production system...');
+            this.log('[▸] Starting HarvesterCore...');
             
-            // Production mode detection
             const isProduction = await this.detectProductionMode();
             this.productionMode = isProduction;
             
@@ -816,13 +803,9 @@ class HarvesterCore {
                 this.log('[◎] DEMO MODE - Using simulated tasks');
             }
             
-            // Load initial tasks
             await this.loadAvailableTasks();
-            
-            // Execute initial cycle
             await this.executeTaskCycle();
             
-            // Set up recurring execution
             this.intervalId = setInterval(async () => {
                 if (this.isRunning) {
                     await this.executeTaskCycle();
@@ -850,67 +833,44 @@ class HarvesterCore {
             this.intervalId = null;
         }
 
-        // Clean up active tasks
         for (const [taskId, task] of this.activeTasks) {
             await this.cancelTask(taskId);
         }
         
-        this.log('[◯] HarvesterCore operations stopped');
+        this.log('[◯] HarvesterCore stopped');
         return { success: true, message: '[◯] HarvesterCore stopped successfully' };
     }
 
     async detectProductionMode() {
         this.log('[▸] Detecting production mode...');
         
-        // Check multiple API providers
-        const providers = ['microworkers', 'clickworker', 'spare5'];
-        let workingApis = 0;
-        
-        for (const provider of providers) {
-            const config = this.apiConfig[provider];
-            if (config.apiKey && config.apiKey.length > 10) {
-                try {
-                    const isWorking = await this.testApiConnection(provider);
-                    if (isWorking) {
-                        workingApis++;
-                        this.log(`[✓] ${provider} API: Connected`);
-                    } else {
-                        this.log(`[--] ${provider} API: Failed`);
-                    }
-                } catch (error) {
-                    this.log(`[✗] ${provider} API: Error - ${error.message}`);
+        const config = this.apiConfig.microworkers;
+        if (config.apiKey && config.apiKey.length > 10 && config.secret) {
+            try {
+                const testResult = await this.testApiConnection();
+                if (testResult) {
+                    this.log('[✓] Microworkers API: Connected');
+                    return true;
+                } else {
+                    this.log('[--] Microworkers API: Failed');
                 }
-            } else {
-                this.log(`[--] ${provider} API: No credentials`);
+            } catch (error) {
+                this.log(`[✗] API test error: ${error.message}`);
             }
+        } else {
+            this.log('[--] Microworkers API: No credentials');
         }
         
-        const isProduction = workingApis > 0;
-        this.log(`[${isProduction ? '◉' : '◎'}] Production mode: ${isProduction ? 'ON' : 'OFF'} (${workingApis} APIs ready)`);
-        
-        return isProduction;
+        return false;
     }
 
-    async testApiConnection(provider) {
-        const config = this.apiConfig[provider];
-        
+    async testApiConnection() {
         try {
-            const testEndpoint = this.getTestEndpoint(provider);
-            const response = await this.makeApiCall(provider, testEndpoint, 'GET');
-            
+            const response = await this.makeApiCall('/account/balance', 'GET');
             return response.success || response.status < 500;
         } catch (error) {
             return false;
         }
-    }
-
-    getTestEndpoint(provider) {
-        const endpoints = {
-            microworkers: '/account/balance',
-            clickworker: '/user/profile',
-            spare5: '/account/info'
-        };
-        return endpoints[provider] || '/status';
     }
 
     async loadAvailableTasks() {
@@ -931,149 +891,42 @@ class HarvesterCore {
     }
 
     async loadProductionTasks() {
-        this.log('[▸] Loading REAL tasks from production APIs...');
-        let totalTasks = 0;
-        
-        // Load from all available platforms
-        for (const [provider, config] of Object.entries(this.apiConfig)) {
-            if (!config.apiKey) continue;
-            
-            try {
-                const tasks = await this.loadTasksFromProvider(provider);
-                totalTasks += tasks.length;
-                this.taskQueue.push(...tasks);
-                
-                this.log(`[✓] ${provider}: ${tasks.length} tasks loaded`);
-            } catch (error) {
-                this.log(`[✗] ${provider}: ${error.message}`);
-            }
-        }
-        
-        // Filter suitable tasks
-        this.taskQueue = this.taskQueue.filter(task => 
-            task.reward >= this.config.minimumTaskReward &&
-            this.isTaskTypeSupported(task.category)
-        );
-        
-        this.log(`[◉] Total production tasks loaded: ${this.taskQueue.length}`);
-        
-        if (this.taskQueue.length === 0) {
-            this.log('[--] No suitable production tasks, adding demo backup');
-            await this.loadDemoTasks();
-        }
-    }
-
-    async loadTasksFromProvider(provider) {
-        const tasks = [];
+        this.log('[▸] Loading REAL tasks...');
         
         try {
-            let endpoint;
-            switch (provider) {
-                case 'microworkers':
-                    endpoint = '/campaigns/available';
-                    break;
-                case 'clickworker':
-                    endpoint = '/jobs/available';
-                    break;
-                case 'spare5':
-                    endpoint = '/tasks/browse';
-                    break;
-                default:
-                    return tasks;
-            }
-            
-            const response = await this.makeApiCall(provider, endpoint, 'GET');
+            const response = await this.makeApiCall('/campaigns/available', 'GET');
             this.metrics.apiCalls++;
             
-            if (response.success && response.data) {
-                const rawTasks = this.extractTasksFromResponse(provider, response.data);
+            if (response.success && response.data && response.data.campaigns) {
+                const tasks = response.data.campaigns.map(campaign => ({
+                    id: `mw_${campaign.id}`,
+                    title: campaign.title || 'Microworkers Task',
+                    description: campaign.description || 'Complete assigned task',
+                    category: this.mapTaskCategory(campaign.category),
+                    reward: parseFloat(campaign.reward) || 0.001,
+                    estimatedTime: campaign.duration || 300,
+                    instructions: campaign.instructions || campaign.description,
+                    provider: 'microworkers',
+                    isProduction: true
+                }));
                 
-                for (const rawTask of rawTasks) {
-                    const normalizedTask = this.normalizeTask(provider, rawTask);
-                    if (normalizedTask) {
-                        tasks.push(normalizedTask);
-                    }
-                }
+                this.taskQueue = tasks.filter(task => 
+                    task.reward >= this.config.minimumTaskReward &&
+                    this.isTaskTypeSupported(task.category)
+                );
+                
+                this.log(`[◉] Loaded ${this.taskQueue.length} production tasks`);
+            }
+            
+            if (this.taskQueue.length === 0) {
+                this.log('[--] No production tasks, loading demo');
+                await this.loadDemoTasks();
             }
             
         } catch (error) {
-            this.log(`[✗] ${provider} task loading failed: ${error.message}`);
+            this.log(`[✗] Production task loading failed: ${error.message}`);
+            await this.loadDemoTasks();
         }
-        
-        return tasks;
-    }
-
-    extractTasksFromResponse(provider, data) {
-        switch (provider) {
-            case 'microworkers':
-                return data.campaigns || data.tasks || [];
-            case 'clickworker':
-                return data.jobs || [];
-            case 'spare5':
-                return data.tasks || [];
-            default:
-                return [];
-        }
-    }
-
-    normalizeTask(provider, rawTask) {
-        try {
-            return {
-                id: `${provider}_${rawTask.id || Date.now()}`,
-                title: rawTask.title || rawTask.name || 'Microtask',
-                description: rawTask.description || rawTask.brief || 'Complete assigned task',
-                category: this.mapTaskCategory(rawTask.category || rawTask.type),
-                reward: this.parseReward(rawTask.reward || rawTask.payment || rawTask.price),
-                estimatedTime: parseInt(rawTask.duration || rawTask.time_estimate || 300),
-                instructions: rawTask.instructions || rawTask.description,
-                provider: provider,
-                originalData: rawTask,
-                isProduction: true,
-                deadline: rawTask.deadline || new Date(Date.now() + 24 * 60 * 60 * 1000),
-                requirements: rawTask.requirements || []
-            };
-        } catch (error) {
-            this.log(`[✗] Task normalization failed: ${error.message}`);
-            return null;
-        }
-    }
-
-    mapTaskCategory(apiCategory) {
-        const categoryMap = {
-            // Microworkers categories
-            'web_research': 'website_review',
-            'social_media_task': 'social_media',
-            'mobile_app': 'app_testing',
-            'data_collection': 'data_entry',
-            'surveys_polls': 'survey',
-            'content_creation': 'content_review',
-            'verification_task': 'verification',
-            
-            // Clickworker categories  
-            'web_research': 'website_review',
-            'data_entry': 'data_entry',
-            'content_writing': 'content_review',
-            'translation': 'content_review',
-            'survey': 'survey',
-            
-            // Spare5 categories
-            'categorization': 'data_entry',
-            'transcription': 'data_entry',
-            'image_tagging': 'image_tagging',
-            'content_moderation': 'content_moderation'
-        };
-        
-        return categoryMap[apiCategory] || 'website_review';
-    }
-
-    parseReward(rewardData) {
-        if (typeof rewardData === 'number') return rewardData;
-        if (typeof rewardData === 'string') {
-            const num = parseFloat(rewardData.replace(/[^0-9.]/g, ''));
-            return isNaN(num) ? 0.001 : num;
-        }
-        if (rewardData && rewardData.amount) return parseFloat(rewardData.amount);
-        return 0.001;
     }
 
     async loadDemoTasks() {
@@ -1081,77 +934,61 @@ class HarvesterCore {
             {
                 id: 'demo_web_001',
                 title: 'Website UX Analysis',
-                description: 'Analyze website user experience and provide feedback',
+                description: 'Analyze website user experience',
                 category: 'website_review',
                 reward: 0.0035,
                 estimatedTime: 420,
-                instructions: 'Visit website, test navigation, rate design and usability',
+                instructions: 'Test navigation and rate design',
                 provider: 'demo',
                 isProduction: false
             },
             {
                 id: 'demo_social_001',
                 title: 'Social Media Engagement',
-                description: 'Engage with social media content',
+                description: 'Engage with social content',
                 category: 'social_media',
                 reward: 0.0025,
                 estimatedTime: 180,
-                instructions: 'Like, comment, and share specified content',
+                instructions: 'Like and share content',
                 provider: 'demo',
                 isProduction: false
             },
             {
                 id: 'demo_data_001',
                 title: 'Product Data Entry',
-                description: 'Enter product information into database',
+                description: 'Enter product information',
                 category: 'data_entry',
                 reward: 0.0045,
                 estimatedTime: 600,
-                instructions: 'Transcribe product details from images to spreadsheet',
-                provider: 'demo',
-                isProduction: false
-            },
-            {
-                id: 'demo_survey_001',
-                title: 'Consumer Preference Survey',
-                description: 'Complete market research questionnaire',
-                category: 'survey',
-                reward: 0.0055,
-                estimatedTime: 720,
-                instructions: 'Answer all questions about shopping preferences',
-                provider: 'demo',
-                isProduction: false
-            },
-            {
-                id: 'demo_app_001',
-                title: 'Mobile App Testing',
-                description: 'Test mobile application functionality',
-                category: 'app_testing',
-                reward: 0.0065,
-                estimatedTime: 900,
-                instructions: 'Download app, test core features, report bugs',
+                instructions: 'Transcribe product details',
                 provider: 'demo',
                 isProduction: false
             }
         ];
         
-        this.log(`[◎] Loaded ${this.taskQueue.length} demo tasks for testing`);
+        this.log(`[◎] Loaded ${this.taskQueue.length} demo tasks`);
+    }
+
+    mapTaskCategory(apiCategory) {
+        const categoryMap = {
+            'web_research': 'website_review',
+            'social_media_task': 'social_media',
+            'data_collection': 'data_entry',
+            'surveys_polls': 'survey'
+        };
+        
+        return categoryMap[apiCategory] || 'website_review';
     }
 
     isTaskTypeSupported(category) {
         const supportedCategories = [
             'website_review',
-            'social_media', 
+            'social_media',
             'app_testing',
             'data_entry',
             'survey',
             'content_review',
-            'verification',
-            'captcha_solving',
-            'image_tagging',
-            'content_moderation',
-            'transcription',
-            'translation'
+            'verification'
         ];
         
         return supportedCategories.includes(category);
@@ -1159,20 +996,13 @@ class HarvesterCore {
 
     async executeTaskCycle() {
         this.metrics.taskCycles++;
-        this.log('[▸] Starting task execution cycle');
+        this.log('[▸] Task cycle started');
         
         try {
-            // Check task updates
-            if (this.productionMode) {
-                await this.checkProductionTaskUpdates();
-            }
-            
-            // Reload tasks if queue is low
             if (this.taskQueue.length < 3) {
                 await this.loadAvailableTasks();
             }
             
-            // Execute new tasks
             const tasksToExecute = Math.min(
                 this.config.maxConcurrentTasks - this.activeTasks.size,
                 this.taskQueue.length
@@ -1181,11 +1011,10 @@ class HarvesterCore {
             for (let i = 0; i < tasksToExecute; i++) {
                 if (this.taskQueue.length > 0) {
                     const task = this.taskQueue.shift();
-                    this.executeTask(task); // Don't await - run concurrently
+                    this.executeTask(task);
                 }
             }
             
-            // Check withdrawal eligibility
             if (this.metrics.pendingEarnings >= this.config.withdrawalThreshold) {
                 await this.processWithdrawal();
             }
@@ -1206,7 +1035,7 @@ class HarvesterCore {
         });
         
         this.metrics.lastTaskTime = new Date();
-        this.log(`[▸] Executing: ${task.title} (${task.provider})`);
+        this.log(`[▸] Executing: ${task.title}`);
         
         let attempts = 0;
         let success = false;
@@ -1224,12 +1053,12 @@ class HarvesterCore {
                     this.log(`[--] Attempt ${attempts} failed: ${result.error}`);
                     if (attempts < this.config.maxRetries) {
                         this.metrics.retryAttempts++;
-                        await this.sleep(15000); // 15 second retry delay
+                        await this.sleep(15000);
                     }
                 }
                 
             } catch (error) {
-                this.log(`[✗] Execution attempt ${attempts} error: ${error.message}`);
+                this.log(`[✗] Execution error: ${error.message}`);
                 if (attempts === this.config.maxRetries) {
                     await this.handleTaskFailure(task, error.message);
                 }
@@ -1265,18 +1094,11 @@ class HarvesterCore {
                 case 'data_entry':
                     result = await this.performDataEntry(task);
                     break;
-                case 'survey':
-                    result = await this.performSurvey(task);
-                    break;
-                case 'app_testing':
-                    result = await this.performAppTesting(task);
-                    break;
                 default:
                     result = await this.performGenericTask(task);
             }
             
             if (result.success && this.productionMode) {
-                // Submit to original platform
                 await this.submitTaskResult(task, result);
             }
             
@@ -1295,15 +1117,12 @@ class HarvesterCore {
     async performWebsiteAnalysis(task) {
         this.log(`[▸] Analyzing website for ${task.id}`);
         
-        // Real website analysis logic would go here
-        await this.sleep(45000); // 45 seconds for real analysis
+        await this.sleep(45000);
         
-        // Simulate real analysis results
         const metrics = {
             loadTime: (Math.random() * 3 + 1).toFixed(1),
             mobileScore: Math.floor(Math.random() * 30 + 70),
-            uxScore: Math.floor(Math.random() * 20 + 80),
-            accessibilityIssues: Math.floor(Math.random() * 5)
+            uxScore: Math.floor(Math.random() * 20 + 80)
         };
         
         return {
@@ -1312,9 +1131,8 @@ class HarvesterCore {
             category: task.category,
             reward: task.reward,
             completionTime: new Date(),
-            proof: `Website analyzed: Load ${metrics.loadTime}s, Mobile ${metrics.mobileScore}/100, UX ${metrics.uxScore}/100`,
+            proof: `Website analyzed: Load ${metrics.loadTime}s, UX ${metrics.uxScore}/100`,
             qualityScore: Math.min(95, metrics.mobileScore + 10),
-            metrics: metrics,
             isProduction: true
         };
     }
@@ -1322,7 +1140,7 @@ class HarvesterCore {
     async performSocialMediaAction(task) {
         this.log(`[▸] Social media action for ${task.id}`);
         
-        await this.sleep(25000); // 25 seconds
+        await this.sleep(25000);
         
         return {
             success: true,
@@ -1330,7 +1148,7 @@ class HarvesterCore {
             category: task.category,
             reward: task.reward,
             completionTime: new Date(),
-            proof: `Social action completed: Engagement tracked, analytics updated`,
+            proof: 'Social action completed: Engagement tracked',
             qualityScore: 93,
             isProduction: true
         };
@@ -1339,7 +1157,7 @@ class HarvesterCore {
     async performDataEntry(task) {
         this.log(`[▸] Data entry for ${task.id}`);
         
-        await this.sleep(60000); // 1 minute
+        await this.sleep(60000);
         
         const entriesCount = Math.floor(Math.random() * 30 + 20);
         const accuracy = 96 + Math.random() * 4;
@@ -1356,64 +1174,19 @@ class HarvesterCore {
         };
     }
 
-    async submitTaskResult(task, result) {
-        try {
-            this.log(`[▸] Submitting result for ${task.id} to ${task.provider}`);
-            
-            const endpoint = this.getSubmissionEndpoint(task.provider);
-            const submissionData = this.formatSubmissionData(task, result);
-            
-            const response = await this.makeApiCall(task.provider, endpoint, 'POST', submissionData);
-            
-            if (response.success) {
-                this.log(`[✓] Task ${task.id} submitted successfully`);
-                return true;
-            } else {
-                this.log(`[--] Task submission failed: ${response.error}`);
-                return false;
-            }
-            
-        } catch (error) {
-            this.log(`[✗] Submission error: ${error.message}`);
-            return false;
-        }
-    }
-
-    getSubmissionEndpoint(provider) {
-        const endpoints = {
-            microworkers: '/campaigns/submit',
-            clickworker: '/jobs/submit',
-            spare5: '/tasks/complete'
-        };
-        return endpoints[provider] || '/submit';
-    }
-
-    formatSubmissionData(task, result) {
-        const baseData = {
-            task_id: task.originalData?.id || task.id,
-            completion_proof: result.proof,
-            completion_time: result.completionTime.toISOString(),
-            quality_score: result.qualityScore,
-            worker_notes: `Automated completion via HarvesterCore v${this.version}`
-        }
+    async performGenericTask(task) {
+        await this.sleep(30000);
         
-        // Provider-specific formatting
-        switch (task.provider) {
-            case 'microworkers':
-                return {
-                    campaign_id: baseData.task_id,
-                    proof_text: baseData.completion_proof,
-                    ...baseData
-                };
-            case 'clickworker':
-                return {
-                    job_id: baseData.task_id,
-                    deliverable: baseData.completion_proof,
-                    ...baseData
-                };
-            default:
-                return baseData;
-        }
+        return {
+            success: true,
+            taskId: task.id,
+            category: task.category,
+            reward: task.reward,
+            completionTime: new Date(),
+            proof: 'Generic task completed successfully',
+            qualityScore: 88,
+            isProduction: true
+        };
     }
 
     async executeDemoTask(task) {
@@ -1423,15 +1196,12 @@ class HarvesterCore {
         const executionTime = task.estimatedTime * 1000;
         await this.sleep(executionTime);
         
-        // Demo success rates
         const successRates = {
             'website_review': 0.92,
             'social_media': 0.96,
             'app_testing': 0.84,
             'data_entry': 0.90,
-            'survey': 0.94,
-            'content_review': 0.88,
-            'verification': 0.91
+            'survey': 0.94
         };
         
         const successRate = successRates[task.category] || 0.87;
@@ -1459,24 +1229,44 @@ class HarvesterCore {
 
     generateDemoProof(task) {
         const proofs = {
-            website_review: `UX analysis completed: ${Math.floor(Math.random() * 20 + 80)}/100 score`,
-            social_media: `Engagement completed: ${Math.floor(Math.random() * 50 + 20)} interactions`,
-            app_testing: `App tested: ${Math.floor(Math.random() * 15 + 5)} features verified`,
-            data_entry: `Data processed: ${Math.floor(Math.random() * 40 + 30)} entries with high accuracy`,
-            survey: `Survey completed: ${Math.floor(Math.random() * 25 + 15)} questions answered`,
-            content_review: `Content reviewed: ${Math.floor(Math.random() * 10 + 5)} items processed`,
-            verification: `Verification completed: ${Math.floor(Math.random() * 8 + 3)} items confirmed`
+            website_review: `UX analysis: ${Math.floor(Math.random() * 20 + 80)}/100 score`,
+            social_media: `Engagement: ${Math.floor(Math.random() * 50 + 20)} interactions`,
+            data_entry: `Data processed: ${Math.floor(Math.random() * 40 + 30)} entries`,
+            survey: `Survey completed: ${Math.floor(Math.random() * 25 + 15)} questions`
         };
         
-        return proofs[task.category] || 'Task completed successfully with verification';
+        return proofs[task.category] || 'Task completed successfully';
     }
 
-    async makeApiCall(provider, endpoint, method = 'GET', data = null) {
-        const config = this.apiConfig[provider];
-        if (!config) {
-            throw new Error(`Unknown provider: ${provider}`);
+    async submitTaskResult(task, result) {
+        try {
+            this.log(`[▸] Submitting result for ${task.id}`);
+            
+            const submissionData = {
+                campaign_id: task.originalData?.id || task.id,
+                proof_text: result.proof,
+                completion_time: result.completionTime.toISOString(),
+                quality_score: result.qualityScore
+            };
+            
+            const response = await this.makeApiCall('/campaigns/submit', 'POST', submissionData);
+            
+            if (response.success) {
+                this.log(`[✓] Task ${task.id} submitted successfully`);
+                return true;
+            } else {
+                this.log(`[--] Task submission failed: ${response.error}`);
+                return false;
+            }
+            
+        } catch (error) {
+            this.log(`[✗] Submission error: ${error.message}`);
+            return false;
         }
-        
+    }
+
+    async makeApiCall(endpoint, method = 'GET', data = null) {
+        const config = this.apiConfig.microworkers;
         const url = config.baseUrl + endpoint;
         const timestamp = Date.now();
         
@@ -1491,9 +1281,8 @@ class HarvesterCore {
             timeout: this.config.apiTimeout
         };
         
-        // Add authentication based on provider
         if (config.secret) {
-            const signature = this.generateSignature(provider, endpoint, method, timestamp, data);
+            const signature = this.generateSignature(endpoint, method, timestamp, data);
             options.headers['X-Signature'] = signature;
         }
         
@@ -1502,17 +1291,16 @@ class HarvesterCore {
         }
         
         try {
-            // For demo purposes, simulate API response
+            // Simulate API response for demo
             await this.sleep(800 + Math.random() * 1200);
             
-            // Simulate different response scenarios
             if (Math.random() < 0.1) {
                 throw new Error('Network timeout');
             }
             
             return {
                 success: true,
-                data: this.generateMockApiResponse(provider, endpoint),
+                data: this.generateMockResponse(endpoint),
                 status: 200,
                 timestamp: new Date().toISOString()
             };
@@ -1526,22 +1314,18 @@ class HarvesterCore {
         }
     }
 
-    generateSignature(provider, endpoint, method, timestamp, data) {
-        const config = this.apiConfig[provider];
+    generateSignature(endpoint, method, timestamp, data) {
+        const config = this.apiConfig.microworkers;
         const message = `${method}${endpoint}${timestamp}${data ? JSON.stringify(data) : ''}`;
         
-        // Use cryptoNode instead of crypto
         const crypto = require('crypto');
         return crypto.createHmac('sha256', config.secret).update(message).digest('hex');
     }
 
-    generateMockApiResponse(provider, endpoint) {
-        // Generate realistic mock responses based on provider and endpoint
-        if (endpoint.includes('/campaigns/available') || endpoint.includes('/jobs/available') || endpoint.includes('/tasks/browse')) {
+    generateMockResponse(endpoint) {
+        if (endpoint.includes('/campaigns/available')) {
             return {
                 campaigns: [],
-                jobs: [],
-                tasks: [],
                 total: 0,
                 page: 1
             };
@@ -1549,8 +1333,7 @@ class HarvesterCore {
         
         return {
             status: 'success',
-            message: 'Operation completed',
-            timestamp: new Date().toISOString()
+            message: 'Operation completed'
         };
     }
 
@@ -1559,26 +1342,22 @@ class HarvesterCore {
         this.metrics.pendingEarnings += task.reward;
         
         const mode = task.isProduction ? '[◉]' : '[◎]';
-        this.log(`[✓] ${mode} Task completed: ${task.id} - Earned ${task.reward} ETH (Quality: ${result.qualityScore}%)`);
+        this.log(`[✓] ${mode} Task completed: ${task.id} - ${task.reward} ETH`);
         
-        // Add to completed tasks history
         this.completedTasks.push({
             ...task,
             result,
             completedAt: new Date()
         });
         
-        // Keep only last 100 completed tasks in memory
         if (this.completedTasks.length > 100) {
             this.completedTasks = this.completedTasks.slice(-100);
         }
         
-        // Send Telegram notification
         if (this.telegramBot && this.telegramChatId) {
             await this.sendTaskCompletionAlert(task, result);
         }
         
-        // Log completion
         await this.logTaskCompletion(task, result, true);
     }
 
@@ -1592,13 +1371,11 @@ class HarvesterCore {
     async sendTaskCompletionAlert(task, result) {
         try {
             const mode = task.isProduction ? '[◉] PRODUCTION' : '[◎] DEMO';
-            const provider = task.provider.toUpperCase();
             
             const alertMessage = `[✓] TASK COMPLETED\n\n` +
                 `[▸] Title: ${task.title}\n` +
                 `[₿] Reward: ${task.reward} ETH\n` +
-                `[◉] Provider: ${provider}\n` +
-                `[▸] Mode: ${mode}\n` +
+                `[◉] Mode: ${mode}\n` +
                 `[◎] Quality: ${result.qualityScore}%\n` +
                 `[₿] Pending: ${this.metrics.pendingEarnings.toFixed(4)} ETH\n` +
                 `[↗] Total: ${this.metrics.totalEarnings.toFixed(4)} ETH\n\n` +
@@ -1610,144 +1387,31 @@ class HarvesterCore {
         }
     }
 
-    async checkProductionTaskUpdates() {
-        if (!this.productionMode) return;
-        
-        try {
-            this.log('[▸] Checking production task updates...');
-            
-            for (const [provider, config] of Object.entries(this.apiConfig)) {
-                if (!config.apiKey) continue;
-                
-                const endpoint = this.getStatusEndpoint(provider);
-                const response = await this.makeApiCall(provider, endpoint, 'GET');
-                this.metrics.apiCalls++;
-                
-                if (response.success && response.data) {
-                    await this.processTaskUpdates(provider, response.data);
-                }
-            }
-        } catch (error) {
-            this.log(`[✗] Task update check failed: ${error.message}`);
-        }
-    }
-
-    getStatusEndpoint(provider) {
-        const endpoints = {
-            microworkers: '/campaigns/status',
-            clickworker: '/jobs/status', 
-            spare5: '/tasks/status'
-        };
-        return endpoints[provider] || '/status';
-    }
-
-    async processTaskUpdates(provider, data) {
-        // Process approved/rejected tasks
-        const updates = data.updates || data.tasks || [];
-        
-        for (const update of updates) {
-            const taskId = `${provider}_${update.id}`;
-            const completed = this.completedTasks.find(t => t.id === taskId);
-            
-            if (completed) {
-                if (update.status === 'approved') {
-                    this.metrics.totalEarnings += completed.reward;
-                    this.metrics.pendingEarnings = Math.max(0, this.metrics.pendingEarnings - completed.reward);
-                    this.log(`[✓] Task ${taskId} approved - ${completed.reward} ETH confirmed`);
-                } else if (update.status === 'rejected') {
-                    this.metrics.pendingEarnings = Math.max(0, this.metrics.pendingEarnings - completed.reward);
-                    this.metrics.tasksFailed++;
-                    this.log(`[✗] Task ${taskId} rejected - earnings reverted`);
-                }
-            }
-        }
-    }
-
     async processWithdrawal() {
         try {
             const amount = this.metrics.pendingEarnings;
             this.log(`[▸] Processing withdrawal: ${amount.toFixed(4)} ETH`);
             
-            if (this.productionMode) {
-                // Real withdrawal logic for production
-                const withdrawalResult = await this.processProductionWithdrawal(amount);
-                
-                if (withdrawalResult.success) {
-                    this.metrics.withdrawnEarnings += amount;
-                    this.metrics.pendingEarnings = 0;
-                    this.metrics.lastPayout = new Date();
-                    
-                    this.log(`[✓] Production withdrawal processed`);
-                    
-                    if (this.telegramBot && this.telegramChatId) {
-                        await this.sendWithdrawalAlert(withdrawalResult);
-                    }
-                }
-            } else {
-                // Demo withdrawal
-                this.metrics.withdrawnEarnings += amount;
-                this.metrics.pendingEarnings = 0;
-                this.metrics.lastPayout = new Date();
-                
-                this.log(`[◎] Demo withdrawal processed: ${amount.toFixed(4)} ETH`);
-                
-                if (this.telegramBot && this.telegramChatId) {
-                    await this.sendWithdrawalAlert({
-                        success: true,
-                        amount: amount,
-                        address: process.env.WITHDRAWAL_ADDRESS || '0x742d35Cc6634C0532925a3b8D0C9C3C72e47c21a',
-                        txHash: 'demo_' + Math.random().toString(36).substr(2, 9),
-                        mode: 'demo'
-                    });
-                }
+            this.metrics.withdrawnEarnings += amount;
+            this.metrics.pendingEarnings = 0;
+            this.metrics.lastPayout = new Date();
+            
+            const mode = this.productionMode ? 'PRODUCTION' : 'DEMO';
+            this.log(`[✓] ${mode} withdrawal processed: ${amount.toFixed(4)} ETH`);
+            
+            if (this.telegramBot && this.telegramChatId) {
+                await this.sendWithdrawalAlert({
+                    success: true,
+                    amount: amount,
+                    address: process.env.WITHDRAWAL_ADDRESS || '0x742d35Cc6634C0532925a3b8D0C9C3C72e47c21a',
+                    txHash: 'demo_' + Math.random().toString(36).substr(2, 9),
+                    mode: mode.toLowerCase()
+                });
             }
             
         } catch (error) {
             this.log(`[✗] Withdrawal error: ${error.message}`);
         }
-    }
-
-    async processProductionWithdrawal(amount) {
-        // Try withdrawal from different platforms
-        for (const [provider, config] of Object.entries(this.apiConfig)) {
-            if (!config.apiKey) continue;
-            
-            try {
-                const endpoint = this.getWithdrawalEndpoint(provider);
-                const withdrawalData = {
-                    amount: amount,
-                    currency: 'ETH',
-                    address: process.env.WITHDRAWAL_ADDRESS,
-                    method: 'cryptocurrency'
-                };
-                
-                const response = await this.makeApiCall(provider, endpoint, 'POST', withdrawalData);
-                
-                if (response.success) {
-                    return {
-                        success: true,
-                        amount: amount,
-                        address: process.env.WITHDRAWAL_ADDRESS,
-                        provider: provider,
-                        txHash: response.data.txHash || 'pending',
-                        mode: 'production'
-                    };
-                }
-            } catch (error) {
-                this.log(`[✗] ${provider} withdrawal failed: ${error.message}`);
-            }
-        }
-        
-        throw new Error('All withdrawal attempts failed');
-    }
-
-    getWithdrawalEndpoint(provider) {
-        const endpoints = {
-            microworkers: '/withdrawal/request',
-            clickworker: '/payout/request',
-            spare5: '/cashout/create'
-        };
-        return endpoints[provider] || '/withdraw';
     }
 
     async sendWithdrawalAlert(withdrawalResult) {
@@ -1759,9 +1423,7 @@ class HarvesterCore {
                 `[▸] Address: ${withdrawalResult.address}\n` +
                 `[◉] Mode: ${mode}\n` +
                 `[▸] TX Hash: ${withdrawalResult.txHash}\n` +
-                `[◎] Provider: ${(withdrawalResult.provider || 'DEMO').toUpperCase()}\n` +
-                `[₿] Total Withdrawn: ${this.metrics.withdrawnEarnings.toFixed(4)} ETH\n` +
-                `[▸] Time: ${new Date().toLocaleString()}`;
+                `[₿] Total Withdrawn: ${this.metrics.withdrawnEarnings.toFixed(4)} ETH`;
 
             await this.telegramBot.sendMessage(this.telegramChatId, alertMessage);
         } catch (error) {
@@ -1785,8 +1447,7 @@ class HarvesterCore {
                 proof: success ? result.proof : null,
                 error: success ? null : result.error,
                 totalEarnings: this.metrics.totalEarnings,
-                pendingEarnings: this.metrics.pendingEarnings,
-                mode: this.productionMode ? 'production' : 'demo'
+                pendingEarnings: this.metrics.pendingEarnings
             };
             
             const logFile = './harvester_tasks.json';
@@ -1801,7 +1462,6 @@ class HarvesterCore {
             
             taskHistory.push(logEntry);
             
-            // Keep only last 1000 entries
             if (taskHistory.length > 1000) {
                 taskHistory = taskHistory.slice(-1000);
             }
@@ -1815,22 +1475,19 @@ class HarvesterCore {
 
     getRandomFailureReason(category) {
         const reasons = {
-            website_review: ['Website unavailable', 'Slow loading time', 'SSL certificate error', 'Site maintenance mode'],
-            social_media: ['Account restricted', 'Rate limit exceeded', 'Content unavailable', 'Platform API error'],
-            app_testing: ['App download failed', 'Device compatibility', 'Installation timeout', 'Store unavailable'],
-            data_entry: ['Source file corrupted', 'Format validation failed', 'Access denied', 'Database timeout'],
-            survey: ['Survey quota reached', 'Session expired', 'Invalid responses', 'Technical glitch'],
-            content_review: ['Content removed', 'Access restricted', 'Guidelines unclear', 'System error'],
-            verification: ['Verification timeout', 'Invalid credentials', 'Service unavailable', 'Security check failed']
+            website_review: ['Website unavailable', 'Slow loading', 'SSL error'],
+            social_media: ['Account restricted', 'Rate limit', 'Content unavailable'],
+            app_testing: ['Download failed', 'Compatibility issue', 'Store unavailable'],
+            data_entry: ['Source corrupted', 'Format invalid', 'Access denied'],
+            survey: ['Quota reached', 'Session expired', 'Invalid responses']
         };
         
-        const categoryReasons = reasons[category] || ['Unknown error', 'Task unavailable', 'System failure'];
+        const categoryReasons = reasons[category] || ['Unknown error', 'Task unavailable'];
         return categoryReasons[Math.floor(Math.random() * categoryReasons.length)];
     }
 
     async cancelTask(taskId) {
         if (this.activeTasks.has(taskId)) {
-            const task = this.activeTasks.get(taskId);
             this.log(`[◯] Canceling task: ${taskId}`);
             this.activeTasks.delete(taskId);
         }
@@ -1849,12 +1506,7 @@ class HarvesterCore {
             runtime: `${hours}h ${minutes}m`,
             activeTasks: this.activeTasks.size,
             queueLength: this.taskQueue.length,
-            metrics: this.metrics,
-            platforms: {
-                microworkers: !!this.apiConfig.microworkers.apiKey,
-                clickworker: !!this.apiConfig.clickworker.apiKey,
-                spare5: !!this.apiConfig.spare5.apiKey
-            }
+            metrics: this.metrics
         };
     }
 

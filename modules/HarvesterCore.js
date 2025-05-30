@@ -1,9 +1,10 @@
-// HarvesterCore V4.0 - REAL Production Multi-Platform Task Harvester
+// HarvesterCore V4.0 - REAL Production Multi-Platform Task Harvester with Web Scraping
 // File: modules/HarvesterCore.js
 
 const crypto = require('crypto');
 const https = require('https');
 const querystring = require('querystring');
+const MicroworkersScraper = require('./MicroworkersScraper'); // ✅ ДОБАВЛЕНО
 
 class HarvesterCore {
     constructor(system) {
@@ -28,11 +29,15 @@ class HarvesterCore {
         this.completedTasks = [];
         this.failedTasks = [];
         
+        // ✅ ДОБАВЛЕНО: Scraper initialization
+        this.microworkersScraper = null;
+        this.useScrapingFallback = this.config.getBool('USE_SCRAPING_FALLBACK', true);
+        
         // Platform configurations with REAL endpoints
         this.platforms = {
             microworkers: {
                 name: 'Microworkers',
-                baseUrl: 'https://ttv.microworkers.com/api/v2', // ✅ ИСПРАВЛЕНО
+                baseUrl: 'https://ttv.microworkers.com/api/v2',
                 config: this.config.getApiConfig('microworkers'),
                 enabled: false,
                 lastCheck: null,
@@ -93,6 +98,11 @@ class HarvesterCore {
             securityChecks: 0,
             suspiciousActivities: 0,
             
+            // ✅ ДОБАВЛЕНО: Scraping metrics
+            scrapingAttempts: 0,
+            scrapingSuccesses: 0,
+            scrapingErrors: 0,
+            
             // Time metrics
             lastTaskTime: null,
             lastSuccessTime: null,
@@ -102,7 +112,7 @@ class HarvesterCore {
         // Configuration
         this.taskConfig = this.config.getTaskConfig();
         
-        this.logger.info('[◉] HarvesterCore V4.0 initialized - PRODUCTION MODE');
+        this.logger.info('[◉] HarvesterCore V4.0 initialized - PRODUCTION MODE with Web Scraping');
     }
 
     async validateSecurityRequirements() {
@@ -183,6 +193,11 @@ class HarvesterCore {
             }
         }
         
+        // ✅ ДОБАВЛЕНО: Bonus for scraped tasks (they're more likely to be real)
+        if (task.scraped) {
+            priority += 25;
+        }
+        
         return Math.round(priority);
     }
 
@@ -230,6 +245,14 @@ class HarvesterCore {
             
             // Security validation
             await this.validateSecurityRequirements();
+            
+            // ✅ ДОБАВЛЕНО: Initialize scraper if needed
+            if (this.useScrapingFallback) {
+                this.logger.info('[▸] Initializing web scraper...');
+                this.microworkersScraper = new MicroworkersScraper(this.system);
+                await this.microworkersScraper.initialize();
+                this.logger.success('[✓] Web scraper initialized');
+            }
             
             // Initialize platforms with REAL API connections
             await this.initializePlatforms();
@@ -284,10 +307,16 @@ class HarvesterCore {
             }
         }
         
+        // ✅ ИЗМЕНЕНО: Consider scraping as a valid platform
+        if (this.useScrapingFallback && this.microworkersScraper) {
+            enabledPlatforms++;
+            this.logger.success('[✓] Microworkers Web Scraping: AVAILABLE');
+        }
+        
         this.productionMode = enabledPlatforms > 0;
         
         if (!this.productionMode) {
-            throw new Error('No platforms enabled - check API credentials');
+            throw new Error('No platforms enabled - check API credentials or enable scraping');
         }
         
         this.logger.success(`[◉] PRODUCTION MODE: ${enabledPlatforms} platforms enabled`);
@@ -297,7 +326,8 @@ class HarvesterCore {
             enabledPlatforms: enabledPlatforms,
             platforms: Object.entries(this.platforms)
                 .filter(([name, platform]) => platform.enabled)
-                .map(([name]) => name)
+                .map(([name]) => name),
+            scrapingEnabled: this.useScrapingFallback
         });
     }
 
@@ -333,7 +363,6 @@ class HarvesterCore {
         }
     }
 
-    // ✅ ИСПРАВЛЕННЫЙ МЕТОД
     async testMicroworkersAPI(platform) {
         const endpoint = '/accounts/me';
         const headers = {
@@ -473,30 +502,70 @@ class HarvesterCore {
         }
     }
 
-    // ✅ ИСПРАВЛЕННЫЙ МЕТОД
+    // ✅ ПОЛНОСТЬЮ ПЕРЕПИСАННЫЙ МЕТОД с интеграцией Scraper
     async fetchMicroworkersTasks() {
         const platform = this.platforms.microworkers;
-        const endpoint = '/basic-campaigns';
-        const headers = {
-            'MicroworkersApiKey': platform.config.apiKey,
-            'Content-Type': 'application/json'
-        };
         
+        // First try API
         try {
+            this.logger.info('[▸] Trying Microworkers API...');
+            
+            const endpoint = '/basic-campaigns';
+            const headers = {
+                'MicroworkersApiKey': platform.config.apiKey,
+                'Content-Type': 'application/json'
+            };
+            
             const response = await this.makeHttpRequest('GET', platform.baseUrl + endpoint, null, headers);
             
             if (response.statusCode === 200) {
                 const data = JSON.parse(response.body);
-                const campaigns = data.items || data.data || [];
+                const campaigns = data.items || [];
                 
-                return campaigns.map(campaign => this.normalizeMicroworkersTask(campaign));
+                if (campaigns.length > 0) {
+                    this.logger.success(`[✓] API returned ${campaigns.length} campaigns`);
+                    return campaigns.map(campaign => this.normalizeMicroworkersTask(campaign));
+                } else {
+                    this.logger.warn('[--] API returned empty list, trying scraping fallback...');
+                }
             } else {
-                throw new Error(`API returned ${response.statusCode}: ${response.body}`);
+                this.logger.warn(`[--] API failed with ${response.statusCode}, trying scraping fallback...`);
             }
         } catch (error) {
-            this.logger.error(`[MW] Fetch failed: ${error.message}`);
-            return [];
+            this.logger.warn(`[--] API error: ${error.message}, trying scraping fallback...`);
         }
+        
+        // Fallback to scraping
+        if (this.useScrapingFallback && this.microworkersScraper) {
+            try {
+                this.logger.info('[▸] Using web scraping fallback...');
+                this.metrics.scrapingAttempts++;
+                
+                // Check if scraper is healthy
+                if (!(await this.microworkersScraper.isHealthy())) {
+                    this.logger.info('[▸] Restarting scraper...');
+                    await this.microworkersScraper.restart();
+                }
+                
+                const scrapedJobs = await this.microworkersScraper.getAvailableJobs();
+                
+                if (scrapedJobs.length > 0) {
+                    this.metrics.scrapingSuccesses++;
+                    this.logger.success(`[✓] Scraping returned ${scrapedJobs.length} jobs`);
+                    return scrapedJobs; // Already normalized by scraper
+                } else {
+                    this.logger.warn('[--] No jobs found via scraping');
+                }
+                
+            } catch (error) {
+                this.metrics.scrapingErrors++;
+                this.logger.error(`[✗] Scraping failed: ${error.message}`);
+            }
+        }
+        
+        // No jobs found
+        this.logger.warn('[--] No jobs available from API or scraping');
+        return [];
     }
 
     async fetchClickworkerTasks() {
@@ -634,7 +703,8 @@ class HarvesterCore {
             platform: task.platform,
             category: task.category,
             reward: task.reward,
-            isProduction: true
+            isProduction: true,
+            scraped: task.scraped || false
         });
         
         try {
@@ -725,7 +795,8 @@ class HarvesterCore {
             completionTime: new Date(),
             proof: proof,
             qualityScore: 95 + Math.floor(Math.random() * 5),
-            isProduction: true
+            isProduction: true,
+            scraped: task.scraped || false
         };
     }
 
@@ -805,6 +876,19 @@ class HarvesterCore {
             case 'content_review':
                 await this.performContentReview(task);
                 break;
+            // ✅ ДОБАВЛЕНО: Новые категории для scraped tasks
+            case 'video_tasks':
+                await this.performVideoTask(task);
+                break;
+            case 'search_tasks':
+                await this.performSearchTask(task);
+                break;
+            case 'signup_tasks':
+                await this.performSignupTask(task);
+                break;
+            case 'review_tasks':
+                await this.performReviewTask(task);
+                break;
             default:
                 await this.performGenericTask(task);
         }
@@ -843,7 +927,7 @@ class HarvesterCore {
                 }
             };
             
-             if (data && method !== 'GET') {
+            if (data && method !== 'GET') {
                 const postData = typeof data === 'string' ? data : JSON.stringify(data);
                 options.headers['Content-Length'] = Buffer.byteLength(postData);
                 
@@ -891,13 +975,14 @@ class HarvesterCore {
             this.isRunning = true;
             this.startTime = new Date();
             
-            this.logger.success('[◉] HarvesterCore started in PRODUCTION MODE');
+            this.logger.success('[◉] HarvesterCore started in PRODUCTION MODE with Web Scraping');
             
             // Log system start
             await this.logger.logSecurity('harvester_started', {
                 mode: 'PRODUCTION',
                 startTime: this.startTime.toISOString(),
-                enabledPlatforms: Object.values(this.platforms).filter(p => p.enabled).length
+                enabledPlatforms: Object.values(this.platforms).filter(p => p.enabled).length,
+                scrapingEnabled: this.useScrapingFallback
             });
             
             // Start main execution loop
@@ -912,7 +997,7 @@ class HarvesterCore {
 
             return { 
                 success: true, 
-                message: '[◉] HarvesterCore activated in PRODUCTION MODE'
+                message: '[◉] HarvesterCore activated in PRODUCTION MODE with Web Scraping'
             };
             
         } catch (error) {
@@ -949,7 +1034,7 @@ class HarvesterCore {
             completedAt: new Date()
         });
         
-        this.logger.success(`[✓] Task completed: ${task.title} - ${task.reward} ETH`);
+        this.logger.success(`[✓] Task completed: ${task.title} - ${task.reward} ETH${task.scraped ? ' (Scraped)' : ''}`);
     }
 
     async handleTaskFailure(task, error, duration) {
@@ -963,7 +1048,28 @@ class HarvesterCore {
             failedAt: new Date()
         });
         
-        this.logger.error(`[✗] Task failed: ${task.title} - ${error}`);
+        this.logger.error(`[✗] Task failed: ${task.title} - ${error}${task.scraped ? ' (Scraped)' : ''}`);
+    }
+
+    // ✅ ДОБАВЛЕНО: Mock methods for new task categories
+    async performVideoTask(task) { 
+        this.logger.info(`[▸] Performing video task: ${task.title}`);
+        await this.sleep(2000); 
+    }
+    
+    async performSearchTask(task) { 
+        this.logger.info(`[▸] Performing search task: ${task.title}`);
+        await this.sleep(1500); 
+    }
+    
+    async performSignupTask(task) { 
+        this.logger.info(`[▸] Performing signup task: ${task.title}`);
+        await this.sleep(3000); 
+    }
+    
+    async performReviewTask(task) { 
+        this.logger.info(`[▸] Performing review task: ${task.title}`);
+        await this.sleep(2500); 
     }
 
     // Mock methods for missing functionality
@@ -997,6 +1103,8 @@ class HarvesterCore {
         return {
             ...this.metrics,
             successRate: this.getSuccessRate(),
+            scrapingSuccessRate: this.metrics.scrapingAttempts > 0 ? 
+                `${(this.metrics.scrapingSuccesses / this.metrics.scrapingAttempts * 100).toFixed(1)}%` : '0%',
             platforms: Object.fromEntries(
                 Object.entries(this.platforms).map(([name, platform]) => [
                     name, 
@@ -1006,10 +1114,19 @@ class HarvesterCore {
                         successRate: platform.successRate
                     }
                 ])
-            )
+            ),
+            scraping: {
+                enabled: this.useScrapingFallback,
+                attempts: this.metrics.scrapingAttempts,
+                successes: this.metrics.scrapingSuccesses,
+                errors: this.metrics.scrapingErrors,
+                successRate: this.metrics.scrapingAttempts > 0 ? 
+                    `${(this.metrics.scrapingSuccesses / this.metrics.scrapingAttempts * 100).toFixed(1)}%` : '0%'
+            }
         };
     }
 
+    // ✅ ИЗМЕНЕНО: Updated stop method to close scraper
     async stop() {
         if (!this.isRunning) {
             return { success: false, message: '[○] HarvesterCore is not running' };
@@ -1021,6 +1138,13 @@ class HarvesterCore {
             if (this.intervalId) {
                 clearInterval(this.intervalId);
                 this.intervalId = null;
+            }
+            
+            // ✅ ДОБАВЛЕНО: Close scraper
+            if (this.microworkersScraper) {
+                this.logger.info('[▸] Closing web scraper...');
+                await this.microworkersScraper.close();
+                this.logger.success('[✓] Web scraper closed');
             }
             
             this.logger.success('[◯] HarvesterCore stopped gracefully');

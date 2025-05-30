@@ -1395,7 +1395,7 @@ class HarvesterCore {
             completion_time: result.completionTime.toISOString(),
             quality_score: result.qualityScore,
             worker_notes: `Automated completion via HarvesterCore v${this.version}`
-        };
+        }
         
         // Provider-specific formatting
         switch (task.provider) {

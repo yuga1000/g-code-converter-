@@ -243,7 +243,7 @@ class TelegramInterface {
     }
 }
 
-module.exports = TelegramInterface; interface ready' };
+module.exports = TelegramInterface; 
             
         } catch (error) {
             this.logger.error(`[✗] Telegram initialization failed: ${error.message}`);

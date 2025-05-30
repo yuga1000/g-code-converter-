@@ -105,6 +105,125 @@ class HarvesterCore {
         this.logger.info('[◉] HarvesterCore V4.0 initialized - PRODUCTION MODE');
     }
 
+    async validateSecurityRequirements() {
+        this.logger.info('[▸] Validating security requirements...');
+        
+        // Check for secure API key storage
+        const apiKeys = ['MICROWORKERS_API_KEY', 'CLICKWORKER_API_KEY', 'SPARE5_API_KEY'];
+        for (const keyName of apiKeys) {
+            const key = this.config.get(keyName);
+            if (key && this.security.isWeakToken(key)) {
+                this.logger.warn(`[--] ${keyName} appears to be weak or default`);
+                this.metrics.suspiciousActivities++;
+            }
+        }
+        
+        // Validate withdrawal address if configured
+        const withdrawalAddr = this.config.get('WITHDRAWAL_ADDRESS');
+        if (withdrawalAddr && !this.security.isValidEthereumAddress(withdrawalAddr)) {
+            throw new Error('Invalid withdrawal address format');
+        }
+        
+        this.metrics.securityChecks++;
+        this.logger.success('[✓] Security requirements validated');
+    }
+
+    validateTaskSecurity(task) {
+        // Check for suspicious task properties
+        if (task.reward > 10) {
+            this.logger.warn(`[--] Suspicious high reward task: ${task.reward} ETH`);
+            return false;
+        }
+        
+        if (task.estimatedTime > 86400) { // More than 24 hours
+            this.logger.warn(`[--] Suspicious long duration task: ${task.estimatedTime}s`);
+            return false;
+        }
+        
+        if (task.instructions && task.instructions.toLowerCase().includes('private key')) {
+            this.logger.warn(`[--] Suspicious task requesting private keys`);
+            return false;
+        }
+        
+        return true;
+    }
+
+    calculateTaskPriority(task) {
+        let priority = 0;
+        
+        // Reward weight (higher reward = higher priority)
+        priority += task.reward * 100;
+        
+        // Time weight (shorter tasks = higher priority)
+        priority += (3600 - Math.min(task.estimatedTime, 3600)) / 10;
+        
+        // Platform preference
+        const platformPriority = {
+            microworkers: 3,
+            clickworker: 2,
+            spare5: 1
+        };
+        priority += (platformPriority[task.platform] || 0) * 10;
+        
+        // Category preference
+        const categoryPriority = {
+            social_media: 5,
+            website_review: 4,
+            survey: 3,
+            data_entry: 2,
+            content_review: 1
+        };
+        priority += (categoryPriority[task.category] || 0) * 5;
+        
+        // Deadline urgency
+        if (task.deadline) {
+            const timeToDeadline = task.deadline.getTime() - Date.now();
+            if (timeToDeadline < 24 * 60 * 60 * 1000) { // Less than 24 hours
+                priority += 50;
+            }
+        }
+        
+        return Math.round(priority);
+    }
+
+    mapTaskCategory(apiCategory) {
+        const categoryMap = {
+            // Microworkers
+            'web_research': 'website_review',
+            'social_media_task': 'social_media',
+            'mobile_app': 'app_testing',
+            'data_collection': 'data_entry',
+            'surveys_polls': 'survey',
+            'content_creation': 'content_review',
+            'verification_task': 'verification',
+            
+            // Clickworker
+            'web_research': 'website_review',
+            'data_entry': 'data_entry',
+            'content_writing': 'content_review',
+            'translation': 'translation',
+            'survey': 'survey',
+            
+            // Spare5
+            'categorization': 'data_entry',
+            'transcription': 'transcription',
+            'image_tagging': 'image_tagging',
+            'content_moderation': 'content_moderation'
+        };
+        
+        return categoryMap[apiCategory] || 'general';
+    }
+
+    parseReward(rewardData) {
+        if (typeof rewardData === 'number') return rewardData;
+        if (typeof rewardData === 'string') {
+            const num = parseFloat(rewardData.replace(/[^0-9.]/g, ''));
+            return isNaN(num) ? this.taskConfig.minTaskReward : num;
+        }
+        if (rewardData && rewardData.amount) return parseFloat(rewardData.amount);
+        return this.taskConfig.minTaskReward;
+    }
+
     async initialize() {
         try {
             this.logger.info('[▸] Initializing HarvesterCore for PRODUCTION...');

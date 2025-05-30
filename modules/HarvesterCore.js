@@ -476,7 +476,7 @@ class HarvesterCore {
     // ✅ ИСПРАВЛЕННЫЙ МЕТОД
     async fetchMicroworkersTasks() {
         const platform = this.platforms.microworkers;
-        const endpoint = '/campaigns/available';
+        const endpoint = '/basic-campaigns';
         const headers = {
             'MicroworkersApiKey': platform.config.apiKey,
             'Content-Type': 'application/json'
@@ -487,7 +487,7 @@ class HarvesterCore {
             
             if (response.statusCode === 200) {
                 const data = JSON.parse(response.body);
-                const campaigns = data.campaigns || data.data || [];
+                const campaigns = data.items || data.data || [];
                 
                 return campaigns.map(campaign => this.normalizeMicroworkersTask(campaign));
             } else {

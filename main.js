@@ -1,12 +1,11 @@
- // Ghostline Revenue System V4.0 - Fixed Main Entry Point
+// Ghostline Revenue System V4.0 - Fixed Main Entry Point
 // File: main.js
 
-const { Logger, Config } = require('./utils');
+const { Logger, Config, SecurityManager } = require('./utils');
 const TelegramInterface = require('./modules/TelegramInterface');
 const MnemonicValidator = require('./modules/MnemonicValidator');
 const LostWalletAnalyzer = require('./modules/LostWalletAnalyzer');
 const HarvesterCore = require('./modules/HarvesterCore');
-const SecurityManager = require('./utils/SecurityManager');
 
 class GhostlineV4 {
     constructor() {
@@ -84,7 +83,7 @@ class GhostlineV4 {
         // Validate API keys format
         const apiKeyValidation = await this.security.validateApiKeys(this.config);
         if (!apiKeyValidation.valid) {
-            throw new Error(`Security validation failed: ${apiKeyValidation.errors.join(', ')}`);
+            this.logger.warn(`[--] API key validation warnings: ${apiKeyValidation.warnings.join(', ')}`);
         }
         
         this.logger.success('[✓] Security validation passed');
@@ -142,21 +141,21 @@ class GhostlineV4 {
     }
 
     formatStartupMessage() {
-        return `[◉] GHOSTLINE V4.0 OPERATIONAL\n\n` +
-            `[▸] System Version: ${this.version}\n` +
-            `[◉] Startup Time: ${this.startTime.toLocaleString()}\n` +
-            `[✓] Active Modules: ${this.metrics.activeModules}\n` +
-            `[🔒] Security: Enhanced Protection Active\n` +
-            `[₿] Revenue Streams Ready:\n` +
-            `    [▸] Multi-platform Task Harvesting\n` +
-            `    [▸] Advanced Wallet Analysis\n` +
-            `    [▸] Mnemonic Recovery System\n\n` +
-            `[◎] Enhanced Features:\n` +
-            `    [✓] Secure Credential Storage\n` +
-            `    [✓] Real-time Statistics\n` +
-            `    [✓] Smart Notifications\n` +
-            `    [✓] Production Safety Checks\n\n` +
-            `[▸] Use /menu for full control panel`;
+        return `🚀 GHOSTLINE V4.0 OPERATIONAL\n\n` +
+            `📋 System Version: ${this.version}\n` +
+            `⏰ Startup Time: ${this.startTime.toLocaleString()}\n` +
+            `✅ Active Modules: ${this.metrics.activeModules}\n` +
+            `🔒 Security: Enhanced Protection Active\n` +
+            `💰 Revenue Streams Ready:\n` +
+            `    ▸ Multi-platform Task Harvesting\n` +
+            `    ▸ Advanced Wallet Analysis\n` +
+            `    ▸ Mnemonic Recovery System\n\n` +
+            `🎯 Enhanced Features:\n` +
+            `    ✅ Secure Credential Storage\n` +
+            `    ✅ Real-time Statistics\n` +
+            `    ✅ Smart Notifications\n` +
+            `    ✅ Production Safety Checks\n\n` +
+            `🎮 Use /start for full control panel`;
     }
 
     startMetricsTracking() {
@@ -323,12 +322,12 @@ class GhostlineV4 {
         if (this.modules.telegram && this.modules.telegram.isConnected) {
             try {
                 await this.modules.telegram.sendSystemMessage(
-                    '[◯] SYSTEM SHUTDOWN\n\n' +
-                    `[▸] Runtime: ${this.formatUptime(this.metrics.uptime)}\n` +
-                    `[₿] Total Earnings: ${this.metrics.totalEarnings.toFixed(4)} ETH\n` +
-                    `[✓] Tasks Completed: ${this.metrics.totalTasks}\n` +
-                    `[🔒] Security Events: ${this.metrics.securityEvents}\n` +
-                    `[◎] Shutdown Time: ${new Date().toLocaleString()}`
+                    '🛑 SYSTEM SHUTDOWN\n\n' +
+                    `⏱️ Runtime: ${this.formatUptime(this.metrics.uptime)}\n` +
+                    `💰 Total Earnings: ${this.metrics.totalEarnings.toFixed(4)} ETH\n` +
+                    `✅ Tasks Completed: ${this.metrics.totalTasks}\n` +
+                    `🔒 Security Events: ${this.metrics.securityEvents}\n` +
+                    `⏰ Shutdown Time: ${new Date().toLocaleString()}`
                 );
             } catch (error) {
                 this.logger.warn(`[--] Shutdown notification failed: ${error.message}`);

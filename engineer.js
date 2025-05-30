@@ -1119,7 +1119,7 @@ class HarvesterCore {
     sleep(milliseconds) {
         return new Promise(resolve => setTimeout(resolve, milliseconds));
     }
-}
+    
 async handleTaskSuccess(task, result) {
         this.metrics.tasksSuccessful++;
         this.metrics.pendingEarnings += task.reward;

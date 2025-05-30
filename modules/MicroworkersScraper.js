@@ -1,4 +1,4 @@
-// MicroworkersScraper V1.0 - Web Scraping модуль для обхода API ограничений
+// Enhanced MicroworkersScraper V2.0 - Детальный парсинг YouTube заданий
 // File: modules/MicroworkersScraper.js
 
 const puppeteer = require('puppeteer');
@@ -24,19 +24,18 @@ class MicroworkersScraper {
         this.jobsUrl = 'https://microworkers.com/jobs';
         
         // Rate limiting
-        this.minDelay = 3000; // 3 seconds between requests
+        this.minDelay = 3000;
         this.maxRetries = 3;
         
-        this.logger.info('[◉] MicroworkersScraper initialized');
+        this.logger.info('[◉] Enhanced MicroworkersScraper initialized');
     }
 
     async initialize() {
         try {
-            this.logger.info('[▸] Initializing browser...');
+            this.logger.info('[▸] Initializing enhanced browser...');
             
-            // Launch puppeteer browser
             this.browser = await puppeteer.launch({
-                headless: 'new', // Use new headless mode
+                headless: 'new',
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -51,15 +50,11 @@ class MicroworkersScraper {
             
             this.page = await this.browser.newPage();
             
-            // Set realistic user agent
             await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-            
-            // Set viewport
             await this.page.setViewport({ width: 1366, height: 768 });
             
-            this.logger.success('[✓] Browser initialized');
-            
-            return { success: true, message: 'Scraper initialized' };
+            this.logger.success('[✓] Enhanced browser initialized');
+            return { success: true, message: 'Enhanced scraper initialized' };
             
         } catch (error) {
             this.logger.error(`[✗] Initialization failed: ${error.message}`);
@@ -75,23 +70,17 @@ class MicroworkersScraper {
         try {
             this.logger.info('[▸] Logging into Microworkers...');
             
-            // Navigate to login page
             await this.page.goto(this.loginUrl, { waitUntil: 'networkidle2' });
-            
-            // Wait for login form
             await this.page.waitForSelector('input[name="email"]', { timeout: 10000 });
             
-            // Fill login form
             await this.page.type('input[name="email"]', this.email);
             await this.page.type('input[name="password"]', this.password);
             
-            // Submit form
             await Promise.all([
                 this.page.click('button[type="submit"], input[type="submit"]'),
                 this.page.waitForNavigation({ waitUntil: 'networkidle2' })
             ]);
             
-            // Check if login successful
             const currentUrl = this.page.url();
             if (currentUrl.includes('dashboard') || currentUrl.includes('jobs') || !currentUrl.includes('login')) {
                 this.isLoggedIn = true;
@@ -107,29 +96,25 @@ class MicroworkersScraper {
         }
     }
 
-    async scrapeJobs() {
+    async scrapeDetailedJobs() {
         try {
-            this.logger.info('[▸] Scraping jobs from Microworkers...');
+            this.logger.info('[▸] Scraping detailed jobs from Microworkers...');
             
-            // Ensure we're logged in
             if (!this.isLoggedIn) {
                 await this.login();
             }
             
-            // Navigate to jobs page
             await this.page.goto(this.jobsUrl, { waitUntil: 'networkidle2' });
-            
-            // Wait for jobs to load
             await this.page.waitForSelector('.job-item, .task-item, [data-job-id], .campaign-item', { timeout: 15000 });
             
-            // Extract job data
-            const jobs = await this.page.evaluate(() => {
+            // Извлечение ДЕТАЛЬНЫХ данных о заданиях
+            const detailedJobs = await this.page.evaluate(() => {
                 const jobElements = document.querySelectorAll('.job-item, .task-item, [data-job-id], .campaign-item, tr[data-job-id]');
                 const extractedJobs = [];
                 
                 jobElements.forEach((jobEl, index) => {
                     try {
-                        // Try different selectors for different page layouts
+                        // Базовые элементы
                         const titleEl = jobEl.querySelector('.job-title, .task-title, .title, h3, h4, .campaign-title') || 
                                        jobEl.querySelector('a[href*="/job/"], a[href*="/task/"]');
                         
@@ -137,25 +122,23 @@ class MicroworkersScraper {
                                        jobEl.querySelector('[class*="price"], [class*="payment"], [class*="reward"]');
                         
                         const descEl = jobEl.querySelector('.description, .desc, .brief, .summary');
-                        
                         const timeEl = jobEl.querySelector('.time, .duration, .estimate, [class*="time"]');
-                        
                         const linkEl = jobEl.querySelector('a[href*="/job/"], a[href*="/task/"]') || titleEl;
                         
-                        // Extract data
+                        // Извлечение базовых данных
                         const title = titleEl ? titleEl.textContent.trim() : `Job ${index + 1}`;
                         const priceText = priceEl ? priceEl.textContent.trim() : '$0.00';
                         const description = descEl ? descEl.textContent.trim() : '';
                         const timeText = timeEl ? timeEl.textContent.trim() : '';
                         const link = linkEl ? linkEl.href : '';
                         
-                        // Parse price
+                        // Парсинг цены
                         const priceMatch = priceText.match(/\$?(\d+\.?\d*)/);
                         const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
                         
-                        // Parse time (try to extract minutes)
+                        // Парсинг времени
                         const timeMatch = timeText.match(/(\d+)\s*(min|minute|hour|hr)/i);
-                        let estimatedTime = 300; // Default 5 minutes
+                        let estimatedTime = 300;
                         if (timeMatch) {
                             const timeValue = parseInt(timeMatch[1]);
                             const timeUnit = timeMatch[2].toLowerCase();
@@ -166,7 +149,7 @@ class MicroworkersScraper {
                             }
                         }
                         
-                        // Extract job ID from link or data attribute
+                        // ID задания
                         let jobId = jobEl.getAttribute('data-job-id') || 
                                    jobEl.getAttribute('data-id') ||
                                    `scraped_${Date.now()}_${index}`;
@@ -178,7 +161,12 @@ class MicroworkersScraper {
                             }
                         }
                         
-                        if (title && price >= 0) {
+                        // ✅ НОВОЕ: Детальный анализ YouTube заданий
+                        const combinedText = (title + ' ' + description).toLowerCase();
+                        
+                        if (title && price >= 0 && combinedText.includes('youtube')) {
+                            const youtubeDetails = this.analyzeYouTubeTask(title, description, combinedText);
+                            
                             extractedJobs.push({
                                 id: jobId,
                                 title: title,
@@ -186,7 +174,23 @@ class MicroworkersScraper {
                                 price: price,
                                 estimatedTime: estimatedTime,
                                 link: link,
-                                category: 'general', // Will be categorized later
+                                category: 'youtube_task',
+                                scraped: true,
+                                scrapedAt: new Date().toISOString(),
+                                
+                                // ✅ ДЕТАЛЬНЫЕ ДАННЫЕ ДЛЯ YOUTUBE
+                                youtubeDetails: youtubeDetails
+                            });
+                        } else if (title && price >= 0) {
+                            // Обычные задания
+                            extractedJobs.push({
+                                id: jobId,
+                                title: title,
+                                description: description,
+                                price: price,
+                                estimatedTime: estimatedTime,
+                                link: link,
+                                category: 'general',
                                 scraped: true,
                                 scrapedAt: new Date().toISOString()
                             });
@@ -199,39 +203,120 @@ class MicroworkersScraper {
                 return extractedJobs;
             });
             
-            this.logger.success(`[✓] Scraped ${jobs.length} jobs from Microworkers`);
+            this.logger.success(`[✓] Scraped ${detailedJobs.length} detailed jobs`);
             this.lastScrapeTime = new Date();
             
-            // Convert to standard format
-            return jobs.map(job => this.normalizeScrapedJob(job));
+            // Конвертация в стандартный формат с улучшениями
+            return detailedJobs.map(job => this.normalizeDetailedJob(job));
             
         } catch (error) {
-            this.logger.error(`[✗] Scraping failed: ${error.message}`);
-            
-            // Try to take screenshot for debugging
-            try {
-                await this.page.screenshot({ path: 'scraping_error.png', fullPage: true });
-                this.logger.debug('[◎] Screenshot saved as scraping_error.png');
-            } catch (screenshotError) {
-                // Ignore screenshot errors
-            }
-            
+            this.logger.error(`[✗] Detailed scraping failed: ${error.message}`);
             throw error;
         }
     }
 
-    normalizeScrapedJob(scrapedJob) {
-        return {
+    // ✅ НОВЫЙ МЕТОД: Анализ YouTube заданий
+    analyzeYouTubeTask(title, description, combinedText) {
+        const details = {
+            searchQuery: '',
+            watchDuration: 180, // По умолчанию 3 минуты
+            requiresLike: false,
+            requiresSubscribe: false,
+            requiresComment: false,
+            screenshotRequired: true,
+            specificVideo: null
+        };
+        
+        // Извлечение поискового запроса
+        const searchPatterns = [
+            /search[:\s]+["']([^"']+)["']/i,
+            /search[:\s]+([^\s]+(?:\s+[^\s]+)*?)(?:\s+\+|\s+and|\s*$)/i,
+            /"([^"]+)"/,
+            /'([^']+)'/
+        ];
+        
+        for (const pattern of searchPatterns) {
+            const match = combinedText.match(pattern);
+            if (match && match[1]) {
+                details.searchQuery = match[1].trim();
+                break;
+            }
+        }
+        
+        // Если не нашли в кавычках, попробуем другие варианты
+        if (!details.searchQuery) {
+            // Поиск после "search for", "search:", "find"
+            const altPatterns = [
+                /(?:search for|find|look for)[:\s]+([^+\n]*?)(?:\s*\+|$)/i,
+                /(?:video|channel)[:\s]+([^+\n]*?)(?:\s*\+|$)/i
+            ];
+            
+            for (const pattern of altPatterns) {
+                const match = combinedText.match(pattern);
+                if (match && match[1]) {
+                    details.searchQuery = match[1].trim();
+                    break;
+                }
+            }
+        }
+        
+        // Извлечение времени просмотра
+        const durationPatterns = [
+            /(\d+)\s*minutes?/i,
+            /(\d+)\s*mins?/i,
+            /(\d+)\s*seconds?/i,
+            /(\d+)\s*secs?/i,
+            /watch.*?(\d+)/i
+        ];
+        
+        for (const pattern of durationPatterns) {
+            const match = combinedText.match(pattern);
+            if (match && match[1]) {
+                const duration = parseInt(match[1]);
+                if (combinedText.includes('minute') || combinedText.includes('min')) {
+                    details.watchDuration = duration * 60;
+                } else if (combinedText.includes('second') || combinedText.includes('sec')) {
+                    details.watchDuration = duration;
+                } else {
+                    // По умолчанию считаем минуты
+                    details.watchDuration = duration * 60;
+                }
+                break;
+            }
+        }
+        
+        // Проверка требований к действиям
+        if (combinedText.includes('like') || combinedText.includes('thumb up')) {
+            details.requiresLike = true;
+        }
+        
+        if (combinedText.includes('subscribe') || combinedText.includes('sub to')) {
+            details.requiresSubscribe = true;
+        }
+        
+        if (combinedText.includes('comment') || combinedText.includes('write')) {
+            details.requiresComment = true;
+        }
+        
+        if (combinedText.includes('screenshot') || combinedText.includes('screen shot') || combinedText.includes('proof')) {
+            details.screenshotRequired = true;
+        }
+        
+        return details;
+    }
+
+    normalizeDetailedJob(scrapedJob) {
+        const normalized = {
             id: `mw_scraped_${scrapedJob.id}`,
             originalId: scrapedJob.id,
             title: scrapedJob.title,
             description: scrapedJob.description,
-            category: this.categorizeJob(scrapedJob.title, scrapedJob.description),
+            category: scrapedJob.category,
             reward: scrapedJob.price,
             estimatedTime: scrapedJob.estimatedTime,
             instructions: scrapedJob.description,
             requirements: [],
-            deadline: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
+            deadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
             maxWorkers: 1,
             availableSlots: 1,
             createdAt: new Date(),
@@ -242,35 +327,23 @@ class MicroworkersScraper {
             scrapedAt: scrapedJob.scrapedAt,
             originalData: scrapedJob
         };
-    }
-
-    categorizeJob(title, description) {
-        const text = (title + ' ' + description).toLowerCase();
         
-        if (text.includes('youtube') || text.includes('video') || text.includes('watch')) {
-            return 'video_tasks';
-        } else if (text.includes('social') || text.includes('follow') || text.includes('like') || text.includes('comment')) {
-            return 'social_media';
-        } else if (text.includes('search') || text.includes('google') || text.includes('bing')) {
-            return 'search_tasks';
-        } else if (text.includes('signup') || text.includes('register') || text.includes('account')) {
-            return 'signup_tasks';
-        } else if (text.includes('review') || text.includes('rating') || text.includes('feedback')) {
-            return 'review_tasks';
-        } else if (text.includes('survey') || text.includes('questionnaire')) {
-            return 'survey';
-        } else if (text.includes('data') || text.includes('entry') || text.includes('typing')) {
-            return 'data_entry';
-        } else if (text.includes('website') || text.includes('visit') || text.includes('browse')) {
-            return 'website_review';
-        } else {
-            return 'general';
+        // ✅ Добавляем детали YouTube заданий
+        if (scrapedJob.youtubeDetails) {
+            normalized.youtubeDetails = scrapedJob.youtubeDetails;
+            normalized.searchQuery = scrapedJob.youtubeDetails.searchQuery;
+            normalized.watchDuration = scrapedJob.youtubeDetails.watchDuration;
+            normalized.requiresLike = scrapedJob.youtubeDetails.requiresLike;
+            normalized.requiresSubscribe = scrapedJob.youtubeDetails.requiresSubscribe;
+            normalized.requiresComment = scrapedJob.youtubeDetails.requiresComment;
+            normalized.screenshotRequired = scrapedJob.youtubeDetails.screenshotRequired;
         }
+        
+        return normalized;
     }
 
     async getAvailableJobs() {
         try {
-            // Rate limiting
             if (this.lastScrapeTime) {
                 const timeSince = Date.now() - this.lastScrapeTime.getTime();
                 if (timeSince < this.minDelay) {
@@ -279,19 +352,30 @@ class MicroworkersScraper {
                 }
             }
             
-            const jobs = await this.scrapeJobs();
+            // ✅ Используем новый детальный метод
+            const jobs = await this.scrapeDetailedJobs();
             
-            // Log scraping results
-            await this.system.logger.logSecurity('jobs_scraped', {
-                source: 'microworkers_scraper',
-                jobCount: jobs.length,
+            // Фильтруем и логируем YouTube задания
+            const youtubeJobs = jobs.filter(job => job.category === 'youtube_task');
+            
+            if (youtubeJobs.length > 0) {
+                this.logger.success(`[🎥] Found ${youtubeJobs.length} YouTube tasks:`);
+                youtubeJobs.forEach(job => {
+                    this.logger.info(`[▸] "${job.title}" - $${job.reward} - Query: "${job.searchQuery}" - ${job.watchDuration}s`);
+                });
+            }
+            
+            await this.system.logger.logSecurity('detailed_jobs_scraped', {
+                source: 'enhanced_microworkers_scraper',
+                totalJobs: jobs.length,
+                youtubeJobs: youtubeJobs.length,
                 timestamp: new Date().toISOString()
             });
             
             return jobs;
             
         } catch (error) {
-            this.logger.error(`[✗] Failed to get jobs: ${error.message}`);
+            this.logger.error(`[✗] Failed to get detailed jobs: ${error.message}`);
             return [];
         }
     }
@@ -303,10 +387,10 @@ class MicroworkersScraper {
                 this.browser = null;
                 this.page = null;
                 this.isLoggedIn = false;
-                this.logger.info('[◯] Browser closed');
+                this.logger.info('[◯] Enhanced browser closed');
             }
         } catch (error) {
-            this.logger.error(`[✗] Error closing browser: ${error.message}`);
+            this.logger.error(`[✗] Error closing enhanced browser: ${error.message}`);
         }
     }
 
@@ -314,12 +398,9 @@ class MicroworkersScraper {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    // Health check
     async isHealthy() {
         try {
             if (!this.browser || !this.page) return false;
-            
-            // Check if page is still responsive
             await this.page.evaluate(() => document.title);
             return true;
         } catch (error) {
@@ -328,7 +409,7 @@ class MicroworkersScraper {
     }
 
     async restart() {
-        this.logger.info('[▸] Restarting scraper...');
+        this.logger.info('[▸] Restarting enhanced scraper...');
         await this.close();
         await this.initialize();
         this.isLoggedIn = false;

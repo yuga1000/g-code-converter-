@@ -1,15 +1,13 @@
-// Ghostline Revenue System V4.0 - Fixed Main Entry Point
+// Ghostline Revenue System V4.1 - Clean Version (HarvesterCore only)
 // File: main.js
 
 const { Logger, Config, SecurityManager } = require('./utils');
 const TelegramInterface = require('./modules/TelegramInterface');
-const MnemonicValidator = require('./modules/MnemonicValidator');
-const LostWalletAnalyzer = require('./modules/LostWalletAnalyzer');
 const HarvesterCore = require('./modules/HarvesterCore');
 
-class GhostlineV4 {
+class GhostlineClean {
     constructor() {
-        this.version = '4.0.0';
+        this.version = '4.1.0';
         this.startTime = new Date();
         this.isInitialized = false;
         
@@ -20,7 +18,7 @@ class GhostlineV4 {
         this.logger = new Logger('SYSTEM');
         this.config = new Config();
         
-        // Core modules - will be initialized after config load
+        // Core modules - only essential ones
         this.modules = {};
         
         // System metrics
@@ -29,24 +27,23 @@ class GhostlineV4 {
             uptime: 0,
             totalEarnings: 0,
             totalTasks: 0,
-            totalWallets: 0,
             activeModules: 0,
             lastActivity: null,
             securityEvents: 0
         };
         
-        this.logger.system('[◉] Ghostline V4.0 initialized with security');
+        this.logger.system('[◉] Ghostline V4.1 Clean initialized (HarvesterCore focus)');
     }
 
     async start() {
         try {
-            this.logger.system('[▸] Starting Ghostline Revenue System V4.0...');
+            this.logger.system('[▸] Starting Ghostline Clean V4.1...');
             
             // Load and validate configuration
             await this.config.load();
             await this.validateSecurity();
             
-            // Initialize modules with security
+            // Initialize core modules
             await this.initializeModules();
             
             // Start Telegram interface
@@ -58,12 +55,12 @@ class GhostlineV4 {
             this.startMetricsTracking();
             
             this.isInitialized = true;
-            this.logger.system('[◉] Ghostline V4.0 fully operational');
+            this.logger.system('[◉] Ghostline Clean V4.1 fully operational');
             
             // Send startup notification
             await this.sendStartupNotification();
             
-            return { success: true, message: 'System started successfully' };
+            return { success: true, message: 'Clean system started successfully' };
             
         } catch (error) {
             this.logger.error(`[✗] Startup failed: ${error.message}`);
@@ -93,12 +90,10 @@ class GhostlineV4 {
         this.logger.system('[▸] Initializing core modules...');
         
         try {
-            // Initialize modules with error handling
+            // Initialize HarvesterCore (main money maker)
             this.modules.harvester = new HarvesterCore(this);
-            this.modules.validator = new MnemonicValidator(this);
-            this.modules.analyzer = new LostWalletAnalyzer(this);
             
-            // Only initialize Telegram if token is provided
+            // Initialize Telegram interface if token is provided
             if (this.config.get('TELEGRAM_BOT_TOKEN')) {
                 this.modules.telegram = new TelegramInterface(this);
             } else {
@@ -106,7 +101,7 @@ class GhostlineV4 {
             }
             
             // Initialize each module
-            const moduleOrder = ['harvester', 'validator', 'analyzer', 'telegram'];
+            const moduleOrder = ['harvester', 'telegram'];
             
             for (const moduleName of moduleOrder) {
                 if (this.modules[moduleName]) {
@@ -141,21 +136,18 @@ class GhostlineV4 {
     }
 
     formatStartupMessage() {
-        return `🚀 GHOSTLINE V4.0 OPERATIONAL\n\n` +
+        return `🚀 GHOSTLINE V4.1 CLEAN OPERATIONAL\n\n` +
             `📋 System Version: ${this.version}\n` +
             `⏰ Startup Time: ${this.startTime.toLocaleString()}\n` +
             `✅ Active Modules: ${this.metrics.activeModules}\n` +
             `🔒 Security: Enhanced Protection Active\n` +
-            `💰 Revenue Streams Ready:\n` +
-            `    ▸ Multi-platform Task Harvesting\n` +
-            `    ▸ Advanced Wallet Analysis\n` +
-            `    ▸ Mnemonic Recovery System\n\n` +
-            `🎯 Enhanced Features:\n` +
-            `    ✅ Secure Credential Storage\n` +
-            `    ✅ Real-time Statistics\n` +
-            `    ✅ Smart Notifications\n` +
-            `    ✅ Production Safety Checks\n\n` +
-            `🎮 Use /start for full control panel`;
+            `💰 Revenue Focus: Task Harvesting\n\n` +
+            `🎯 Core Features:\n` +
+            `    ✅ Multi-platform Task Harvesting\n` +
+            `    ✅ Real-time Task Execution\n` +
+            `    ✅ Secure Operations\n` +
+            `    ✅ Telegram Control Interface\n\n` +
+            `🎮 Use /start for control panel`;
     }
 
     startMetricsTracking() {
@@ -168,14 +160,10 @@ class GhostlineV4 {
         this.metrics.uptime = Date.now() - this.startTime.getTime();
         this.metrics.lastActivity = new Date();
         
-        // Aggregate metrics from modules
+        // Aggregate metrics from harvester
         if (this.modules.harvester && this.modules.harvester.isRunning) {
             this.metrics.totalEarnings = this.modules.harvester.getTotalEarnings();
             this.metrics.totalTasks = this.modules.harvester.getTotalTasks();
-        }
-        
-        if (this.modules.validator && this.modules.validator.isRunning) {
-            this.metrics.totalWallets = this.modules.validator.getTotalValidated();
         }
     }
 
@@ -198,22 +186,6 @@ class GhostlineV4 {
                 case 'stop_harvester':
                     return this.modules.harvester ? await this.modules.harvester.stop() : 
                         { success: false, message: 'Harvester not available' };
-                
-                case 'start_analyzer':
-                    return this.modules.analyzer ? await this.modules.analyzer.start() : 
-                        { success: false, message: 'Analyzer not available' };
-                
-                case 'stop_analyzer':
-                    return this.modules.analyzer ? await this.modules.analyzer.stop() : 
-                        { success: false, message: 'Analyzer not available' };
-                
-                case 'start_validator':
-                    return this.modules.validator ? await this.modules.validator.start() : 
-                        { success: false, message: 'Validator not available' };
-                
-                case 'stop_validator':
-                    return this.modules.validator ? await this.modules.validator.stop() : 
-                        { success: false, message: 'Validator not available' };
                 
                 case 'get_status':
                     return this.getSystemStatus();
@@ -249,8 +221,6 @@ class GhostlineV4 {
             },
             modules: {
                 harvester: this.getModuleStatus('harvester'),
-                analyzer: this.getModuleStatus('analyzer'),
-                validator: this.getModuleStatus('validator'),
                 telegram: this.getModuleStatus('telegram')
             },
             metrics: this.metrics
@@ -271,19 +241,8 @@ class GhostlineV4 {
                 return {
                     status: module.isRunning ? '[◉] Active' : '[○] Stopped',
                     tasks: module.getActiveTasks ? module.getActiveTasks() : 0,
-                    earnings: module.getPendingEarnings ? module.getPendingEarnings() : 0
-                };
-            case 'analyzer':
-                return {
-                    status: module.isRunning ? '[◉] Active' : '[○] Stopped',
-                    wallets: module.getAnalyzedCount ? module.getAnalyzedCount() : 0,
-                    discoveries: module.getDiscoveries ? module.getDiscoveries() : 0
-                };
-            case 'validator':
-                return {
-                    status: module.isRunning ? '[◉] Active' : '[○] Stopped',
-                    validated: module.getTotalValidated ? module.getTotalValidated() : 0,
-                    found: module.getPositiveBalances ? module.getPositiveBalances() : 0
+                    earnings: module.getTotalEarnings ? module.getTotalEarnings() : 0,
+                    successRate: module.getSuccessRate ? module.getSuccessRate() : '0%'
                 };
             case 'telegram':
                 return {
@@ -297,22 +256,20 @@ class GhostlineV4 {
     async emergencyStop() {
         this.logger.system('[◯] Emergency stop initiated');
         
-        // Stop all modules
-        const stopPromises = Object.entries(this.modules).map(([name, module]) => {
-            if (module && module.stop && typeof module.stop === 'function') {
-                return module.stop().catch(err => 
-                    this.logger.error(`Module ${name} stop error: ${err.message}`)
-                );
+        // Stop harvester
+        if (this.modules.harvester && this.modules.harvester.stop) {
+            try {
+                await this.modules.harvester.stop();
+                this.logger.system('[◯] Harvester stopped');
+            } catch (error) {
+                this.logger.error(`Harvester stop error: ${error.message}`);
             }
-            return Promise.resolve();
-        });
-        
-        await Promise.all(stopPromises);
+        }
         
         this.isInitialized = false;
         this.logger.system('[◯] Emergency stop completed');
         
-        return { success: true, message: '[◯] All systems stopped' };
+        return { success: true, message: '[◯] System stopped' };
     }
 
     async shutdown() {
@@ -349,7 +306,7 @@ class GhostlineV4 {
         // Clear sensitive data
         await this.security.clearSensitiveData();
         
-        this.logger.system('[◯] Ghostline V4.0 shutdown complete');
+        this.logger.system('[◯] Ghostline Clean V4.1 shutdown complete');
     }
 
     getDetailedMetrics() {
@@ -366,21 +323,13 @@ class GhostlineV4 {
                 totalEarnings: this.metrics.totalEarnings,
                 tasksPerHour: this.calculateTasksPerHour(),
                 hourlyEarnings: this.calculateHourlyEarnings(),
-                successRate: this.calculateOverallSuccessRate()
+                successRate: this.modules.harvester ? this.modules.harvester.getSuccessRate() : '0%'
             }
         };
         
-        // Add module-specific metrics if available
+        // Add harvester metrics if available
         if (this.modules.harvester && this.modules.harvester.getDetailedMetrics) {
             metrics.harvester = this.modules.harvester.getDetailedMetrics();
-        }
-        
-        if (this.modules.analyzer && this.modules.analyzer.getDetailedMetrics) {
-            metrics.analyzer = this.modules.analyzer.getDetailedMetrics();
-        }
-        
-        if (this.modules.validator && this.modules.validator.getDetailedMetrics) {
-            metrics.validator = this.modules.validator.getDetailedMetrics();
         }
         
         return metrics;
@@ -402,25 +351,6 @@ class GhostlineV4 {
         return hoursRunning > 0 ? (this.metrics.totalEarnings / hoursRunning).toFixed(4) : '0.0000';
     }
 
-    calculateOverallSuccessRate() {
-        const rates = [];
-        
-        if (this.modules.harvester && this.modules.harvester.getSuccessRate) {
-            const rate = this.modules.harvester.getSuccessRate();
-            if (rate !== '0%') rates.push(parseFloat(rate));
-        }
-        
-        if (this.modules.analyzer && this.modules.analyzer.getSuccessRate) {
-            const rate = this.modules.analyzer.getSuccessRate();
-            if (rate !== '0%') rates.push(parseFloat(rate));
-        }
-        
-        if (rates.length === 0) return '0%';
-        
-        const average = rates.reduce((sum, rate) => sum + rate, 0) / rates.length;
-        return `${average.toFixed(1)}%`;
-    }
-
     // Health check for monitoring
     healthCheck() {
         return {
@@ -438,8 +368,8 @@ class GhostlineV4 {
     }
 }
 
-// Initialize system
-const system = new GhostlineV4();
+// Initialize clean system
+const system = new GhostlineClean();
 
 // Handle process signals
 process.on('SIGTERM', async () => {
@@ -469,12 +399,12 @@ process.on('unhandledRejection', (reason, promise) => {
     }
 });
 
-// Start the system
+// Start the clean system
 system.start().then(result => {
     if (result.success) {
-        console.log('🚀 Ghostline V4.0 started successfully');
+        console.log('🚀 Ghostline Clean V4.1 started successfully');
     } else {
-        console.error('❌ Ghostline V4.0 startup failed:', result.message);
+        console.error('❌ Ghostline Clean V4.1 startup failed:', result.message);
         process.exit(1);
     }
 }).catch(error => {
@@ -483,4 +413,4 @@ system.start().then(result => {
 });
 
 // Export for external use
-module.exports = GhostlineV4;
+module.exports = GhostlineClean;

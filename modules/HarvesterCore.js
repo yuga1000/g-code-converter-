@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const https = require('https');
 const querystring = require('querystring');
 const MicroworkersScraper = require('./MicroworkersScraper');
-const YouTubeAutomator = require('./YouTubeAutomator'); // ✅ НОВЫЙ ИМПОРТ
+
 
 class HarvesterCore {
     constructor(system) {

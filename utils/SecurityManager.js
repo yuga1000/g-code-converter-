@@ -1,4 +1,4 @@
-// Security Manager V4.0 - Secure Credential and API Key Management
+// Security Manager V4.1 - Fixed Crypto Methods
 // File: utils/SecurityManager.js
 
 const crypto = require('crypto');
@@ -7,7 +7,7 @@ const path = require('path');
 
 class SecurityManager {
     constructor() {
-        this.version = '4.0.0';
+        this.version = '4.1.0';
         this.encryptionKey = this.generateOrLoadEncryptionKey();
         this.algorithm = 'aes-256-gcm';
         this.keyDerivationRounds = 100000;
@@ -31,12 +31,11 @@ class SecurityManager {
             'emergency_stop', 'security_report'
         ];
         
-        console.log('[🔒] SecurityManager V4.0 initialized');
+        console.log('[🔒] SecurityManager V4.1 initialized with fixed crypto');
     }
 
     generateOrLoadEncryptionKey() {
         try {
-            // Try to load existing key from secure location
             const keyPath = path.join(process.cwd(), '.ghostline', 'security.key');
             if (require('fs').existsSync(keyPath)) {
                 return require('fs').readFileSync(keyPath);
@@ -57,7 +56,7 @@ class SecurityManager {
             await fs.mkdir(secureDir, { recursive: true });
             
             const keyPath = path.join(secureDir, 'security.key');
-            await fs.writeFile(keyPath, key, { mode: 0o600 }); // Read/write for owner only
+            await fs.writeFile(keyPath, key, { mode: 0o600 });
             
             console.log('[🔒] Encryption key saved securely');
         } catch (error) {
@@ -65,24 +64,23 @@ class SecurityManager {
         }
     }
 
-    // Encrypt sensitive data
+    // ✅ FIXED: Encrypt with proper GCM mode
     encrypt(plaintext) {
         try {
             this.metrics.encryptionOperations++;
             
             const iv = crypto.randomBytes(16);
-            const cipher = crypto.createCipher(this.algorithm, this.encryptionKey);
+            const cipher = crypto.createCipherGCM('aes-256-gcm', this.encryptionKey, iv);
             
             let encrypted = cipher.update(plaintext, 'utf8', 'hex');
             encrypted += cipher.final('hex');
             
-            // For GCM mode, we'd also get the auth tag
-            // const authTag = cipher.getAuthTag();
+            const authTag = cipher.getAuthTag();
             
             return {
                 encrypted: encrypted,
                 iv: iv.toString('hex'),
-                // authTag: authTag.toString('hex') // For GCM
+                authTag: authTag.toString('hex')
             };
         } catch (error) {
             console.error('[✗] Encryption failed:', error.message);
@@ -90,16 +88,20 @@ class SecurityManager {
         }
     }
 
-    // Decrypt sensitive data
+    // ✅ FIXED: Decrypt with proper GCM mode
     decrypt(encryptedData) {
         try {
             this.metrics.decryptionOperations++;
             
-            if (!encryptedData || !encryptedData.encrypted) {
+            if (!encryptedData || !encryptedData.encrypted || !encryptedData.iv || !encryptedData.authTag) {
                 throw new Error('Invalid encrypted data format');
             }
             
-            const decipher = crypto.createDecipher(this.algorithm, this.encryptionKey);
+            const iv = Buffer.from(encryptedData.iv, 'hex');
+            const authTag = Buffer.from(encryptedData.authTag, 'hex');
+            
+            const decipher = crypto.createDecipherGCM('aes-256-gcm', this.encryptionKey, iv);
+            decipher.setAuthTag(authTag);
             
             let decrypted = decipher.update(encryptedData.encrypted, 'hex', 'utf8');
             decrypted += decipher.final('utf8');
@@ -144,25 +146,20 @@ class SecurityManager {
             validation.valid = false;
         }
 
-        // Check for default/example values
         this.checkForDefaultValues(config, validation);
-
         return validation;
     }
 
     validateTelegramToken(token) {
-        // Telegram bot tokens have format: 123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi
         const telegramTokenRegex = /^[0-9]{8,10}:[A-Za-z0-9_-]{35}$/;
         return telegramTokenRegex.test(token);
     }
 
     validateEtherscanKey(key) {
-        // Etherscan API keys are typically 34 characters alphanumeric
         return key.length >= 32 && /^[A-Za-z0-9]+$/.test(key);
     }
 
     validateAlchemyKey(key) {
-        // Alchemy API keys have specific format
         return key.length >= 32 && /^[A-Za-z0-9_-]+$/.test(key);
     }
 
@@ -193,16 +190,13 @@ class SecurityManager {
         }
     }
 
-    // Validate credential storage security
     async validateCredentialStorage() {
         try {
-            // Check if .env file has secure permissions
             const envPath = path.join(process.cwd(), '.env');
             try {
                 const stats = await fs.stat(envPath);
                 const mode = stats.mode & parseInt('777', 8);
                 
-                // Check if file is readable by others
                 if (mode & parseInt('044', 8)) {
                     console.warn('[--] .env file has insecure permissions (readable by others)');
                     return false;
@@ -211,7 +205,6 @@ class SecurityManager {
                 // .env file doesn't exist
             }
 
-            // Check for credentials in plain text files
             const dangerousFiles = ['.env.example', 'config.txt', 'keys.txt'];
             for (const file of dangerousFiles) {
                 const filePath = path.join(process.cwd(), file);
@@ -243,16 +236,13 @@ class SecurityManager {
         return credentialPatterns.some(pattern => pattern.test(content));
     }
 
-    // Validate commands for authorization
     async validateCommand(command, params = {}) {
-        // Check if command is in authorized list
         if (!this.authorizedCommands.includes(command)) {
             this.metrics.securityViolations++;
             this.logSuspiciousActivity('unauthorized_command', { command, params });
             return false;
         }
 
-        // Additional parameter validation
         if (command.includes('emergency') && !this.validateEmergencyCommand(params)) {
             this.metrics.securityViolations++;
             this.logSuspiciousActivity('invalid_emergency_command', { command, params });
@@ -263,8 +253,6 @@ class SecurityManager {
     }
 
     validateEmergencyCommand(params) {
-        // Emergency commands should have additional validation
-        // For example, require a specific confirmation parameter
         return true; // Simplified for demo
     }
 
@@ -278,7 +266,6 @@ class SecurityManager {
 
         this.metrics.suspiciousActivities.push(activity);
         
-        // Keep only last 100 activities
         if (this.metrics.suspiciousActivities.length > 100) {
             this.metrics.suspiciousActivities = this.metrics.suspiciousActivities.slice(-100);
         }
@@ -297,7 +284,6 @@ class SecurityManager {
         return severityMap[activityType] || 'low';
     }
 
-    // Securely store sensitive data
     async secureStore(key, data) {
         try {
             const encrypted = this.encrypt(JSON.stringify(data));
@@ -319,7 +305,6 @@ class SecurityManager {
         }
     }
 
-    // Retrieve securely stored data
     async secureRetrieve(key) {
         try {
             const secureDir = path.join(process.cwd(), '.ghostline', 'secure');
@@ -340,16 +325,13 @@ class SecurityManager {
         }
     }
 
-    // Rotate encryption keys
     async rotateEncryptionKey() {
         try {
             console.log('[🔒] Starting encryption key rotation...');
             
-            // Generate new key
             const newKey = crypto.randomBytes(32);
             const oldKey = this.encryptionKey;
             
-            // Re-encrypt all stored data with new key
             const secureDir = path.join(process.cwd(), '.ghostline', 'secure');
             try {
                 const files = await fs.readdir(secureDir);
@@ -360,7 +342,6 @@ class SecurityManager {
                         const data = await this.secureRetrieve(keyName);
                         
                         if (data) {
-                            // Switch to new key
                             this.encryptionKey = newKey;
                             await this.secureStore(keyName, data);
                         }
@@ -370,7 +351,6 @@ class SecurityManager {
                 // Directory doesn't exist or no files to rotate
             }
             
-            // Save new key
             await this.saveEncryptionKey(newKey);
             this.encryptionKey = newKey;
             
@@ -381,23 +361,19 @@ class SecurityManager {
             return true;
         } catch (error) {
             console.error('[✗] Key rotation failed:', error.message);
-            // Restore old key on failure
             this.encryptionKey = oldKey;
             return false;
         }
     }
 
-    // Clear all sensitive data from memory and storage
     async clearSensitiveData() {
         try {
             console.log('[🔒] Clearing sensitive data...');
             
-            // Clear encryption key from memory
             if (this.encryptionKey) {
                 this.encryptionKey.fill(0);
             }
             
-            // Clear metrics that might contain sensitive info
             this.metrics.suspiciousActivities = [];
             
             console.log('[✓] Sensitive data cleared');
@@ -406,7 +382,6 @@ class SecurityManager {
         }
     }
 
-    // Generate security report
     generateSecurityReport() {
         const highSeverityEvents = this.metrics.suspiciousActivities
             .filter(activity => ['high', 'critical'].includes(activity.severity));
@@ -447,7 +422,6 @@ class SecurityManager {
         return recommendations;
     }
 
-    // Get security metrics
     getMetrics() {
         return {
             ...this.metrics,
@@ -460,10 +434,8 @@ class SecurityManager {
     calculateSecurityLevel() {
         let score = 100;
         
-        // Deduct points for security violations
         score -= this.metrics.securityViolations * 5;
         
-        // Deduct points for old encryption key
         if (!this.metrics.lastKeyRotation) {
             score -= 10;
         } else {
@@ -473,7 +445,6 @@ class SecurityManager {
             if (daysOld > 90) score -= 10;
         }
         
-        // Deduct points for suspicious activities
         const highSeverityCount = this.metrics.suspiciousActivities
             .filter(activity => ['high', 'critical'].includes(activity.severity)).length;
         score -= highSeverityCount * 3;
@@ -481,7 +452,6 @@ class SecurityManager {
         return Math.max(0, Math.min(100, score));
     }
 
-    // Get health status
     getHealthStatus() {
         const securityLevel = this.calculateSecurityLevel();
         
@@ -492,20 +462,17 @@ class SecurityManager {
         return 'critical';
     }
 
-    // Hash sensitive data for logging (without storing the actual data)
     hashForLogging(sensitiveData) {
         return crypto.createHash('sha256')
             .update(sensitiveData.toString())
             .digest('hex')
-            .substring(0, 8); // Only first 8 characters for identification
+            .substring(0, 8);
     }
 
-    // Validate Ethereum address format
     isValidEthereumAddress(address) {
         return /^0x[a-fA-F0-9]{40}$/.test(address);
     }
 
-    // Generate secure random ID
     generateSecureId() {
         return crypto.randomBytes(16).toString('hex');
     }

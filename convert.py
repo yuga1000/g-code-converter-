@@ -4,8 +4,13 @@ if len(sys.argv) != 2:
     print('Usage: python convert.py <input_file>')
     sys.exit(1)
 
-with open(sys.argv[1], 'r', newline='') as f:
-    for line in f:
+output_path = 'converted_output.nc'
+
+with open(sys.argv[1], 'r', newline='') as infile, \
+     open(output_path, 'w', newline='') as outfile:
+    for line in infile:
         line = line.replace('S1000', 'Z-1 F1000')
         line = line.replace('S0', 'Z1 F1000')
-        sys.stdout.write(line)
+        outfile.write(line)
+
+print(f'Converted file written to {output_path}')

@@ -11,55 +11,75 @@
             margin: 0 auto;
             padding: 1em;
         }
-        pre {
-            background: #f4f4f4;
+        #dropZone {
             padding: 1em;
-            white-space: pre-wrap;
+            margin-bottom: 1em;
+            border: 2px dashed #999;
+            text-align: center;
+            cursor: pointer;
+        }
+        #dropZone.hover {
+            background: #eef;
+        }
+        textarea {
+            width: 100%;
+            min-height: 200px;
         }
     </style>
 </head>
 <body>
     <h1>G-code Converter</h1>
-    <input type="file" id="fileInput" accept=".nc,.gcode,.txt">
+    <div id="dropZone">Drop .nc or .gcode file here or click to select<input type="file" id="fileInput" accept=".nc,.gcode" style="display:none"></div>
     <button id="convertBtn">Convert</button>
-    <a id="downloadLink" href="#" download="converted.nc" style="display:none">Download converted file</a>
-    <pre id="output"></pre>
+    <a id="downloadLink" href="#" download="converted.nc" style="display:none">Download</a>
+    <textarea id="output" readonly></textarea>
     <script>
-    document.getElementById('convertBtn').addEventListener('click', function () {
+    document.addEventListener('DOMContentLoaded', () => {
+        const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
-        const outputPre = document.getElementById('output');
+        const convertBtn = document.getElementById('convertBtn');
+        const output = document.getElementById('output');
         const downloadLink = document.getElementById('downloadLink');
+        let file;
 
-        if (!fileInput.files.length) {
-            alert('Please select a file.');
-            return;
+        function handleFiles(files) {
+            file = files[0];
+            if (file) {
+                convertBtn.disabled = false;
+            }
         }
 
-        const file = fileInput.files[0];
-        const reader = new FileReader();
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+        dropZone.addEventListener('dragover', e => {
+            e.preventDefault();
+            dropZone.classList.add('hover');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('hover'));
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropZone.classList.remove('hover');
+            handleFiles(e.dataTransfer.files);
+        });
 
-        reader.onload = function () {
-            const text = reader.result;
-            const newline = text.includes('\r\n') ? '\r\n' : '\n';
-            const lines = text.split(/\r?\n/);
-            const convertedLines = lines.map(line => {
-                const trimmed = line.trim();
-                if (/\bM3\b/i.test(trimmed) || /\bS1000\b/i.test(trimmed)) {
-                    return 'G1 Z-1 F100';
-                }
-                if (/\bM5\b/i.test(trimmed) || /\bS0\b/i.test(trimmed)) {
-                    return 'G1 Z1 F100';
-                }
-                return line;
-            });
-            const result = convertedLines.join(newline);
-            outputPre.textContent = result;
-            const blob = new Blob([result], { type: 'text/plain' });
-            downloadLink.href = URL.createObjectURL(blob);
-            downloadLink.style.display = 'inline';
-        };
-
-        reader.readAsText(file);
+        convertBtn.addEventListener('click', () => {
+            if (!file) {
+                alert('Please select a file.');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+                const original = reader.result;
+                const converted = original
+                    .replace(/\bS1000\b/g, 'G1 Z-1 F100')
+                    .replace(/\bS0\b/g, 'G1 Z1 F100');
+                output.value = converted.slice(0, 1000);
+                const blob = new Blob([converted], { type: 'text/plain' });
+                downloadLink.href = URL.createObjectURL(blob);
+                downloadLink.style.display = 'inline';
+            };
+            reader.readAsText(file);
+        });
     });
     </script>
 </body>

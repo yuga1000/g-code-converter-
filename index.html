@@ -1,86 +1,59 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>G-code Converter</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 1em;
-        }
-        #dropZone {
-            padding: 1em;
-            margin-bottom: 1em;
-            border: 2px dashed #999;
-            text-align: center;
-            cursor: pointer;
-        }
-        #dropZone.hover {
-            background: #eef;
-        }
-        textarea {
-            width: 100%;
-            min-height: 200px;
-        }
-    </style>
+<meta charset="UTF-8">
+<title>G-code Converter</title>
+<style>
+body{
+    font-family:Arial,Helvetica,sans-serif;
+    max-width:600px;
+    margin:40px auto;
+    text-align:center;
+}
+#drop-area{
+    border:2px dashed #666;
+    padding:20px;
+    cursor:pointer;
+    margin-bottom:20px;
+}
+#drop-area.hover{background:#f0f0f0;}
+#convert{padding:8px 16px;margin-bottom:20px;}
+#download{display:none;margin-top:20px;}
+</style>
 </head>
 <body>
-    <h1>G-code Converter</h1>
-    <div id="dropZone">Drop .nc or .gcode file here or click to select<input type="file" id="fileInput" accept=".nc,.gcode" style="display:none"></div>
-    <button id="convertBtn">Convert</button>
-    <a id="downloadLink" href="#" download="converted.nc" style="display:none">Download</a>
-    <textarea id="output" readonly></textarea>
-    <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const dropZone = document.getElementById('dropZone');
-        const fileInput = document.getElementById('fileInput');
-        const convertBtn = document.getElementById('convertBtn');
-        const output = document.getElementById('output');
-        const downloadLink = document.getElementById('downloadLink');
-        let file;
-
-        function handleFiles(files) {
-            file = files[0];
-            if (file) {
-                convertBtn.disabled = false;
-            }
-        }
-
-        dropZone.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', () => handleFiles(fileInput.files));
-        dropZone.addEventListener('dragover', e => {
-            e.preventDefault();
-            dropZone.classList.add('hover');
-        });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('hover'));
-        dropZone.addEventListener('drop', e => {
-            e.preventDefault();
-            dropZone.classList.remove('hover');
-            handleFiles(e.dataTransfer.files);
-        });
-
-        convertBtn.addEventListener('click', () => {
-            if (!file) {
-                alert('Please select a file.');
-                return;
-            }
-            const reader = new FileReader();
-            reader.onload = () => {
-                const original = reader.result;
-                const converted = original
-                    .replace(/\bS1000\b/g, 'G1 Z-1 F100')
-                    .replace(/\bS0\b/g, 'G1 Z1 F100');
-                output.value = converted.slice(0, 1000);
-                const blob = new Blob([converted], { type: 'text/plain' });
-                downloadLink.href = URL.createObjectURL(blob);
-                downloadLink.style.display = 'inline';
-            };
-            reader.readAsText(file);
-        });
-    });
-    </script>
+<h1>G-code Converter</h1>
+<div id="drop-area">Drop .gcode or .nc file here or click to choose<input type="file" id="fileInput" accept=".gcode,.nc" style="display:none"></div>
+<button id="convert" disabled>Convert</button>
+<br>
+<a id="download">Download Converted File</a>
+<script>
+const dropArea=document.getElementById('drop-area');
+const fileInput=document.getElementById('fileInput');
+const convertBtn=document.getElementById('convert');
+const downloadLink=document.getElementById('download');
+let file;
+function prevent(e){e.preventDefault();e.stopPropagation();}
+function handleFiles(files){file=files[0];if(file)convertBtn.disabled=false;}
+dropArea.addEventListener('click',()=>fileInput.click());
+fileInput.addEventListener('change',()=>handleFiles(fileInput.files));
+['dragenter','dragover'].forEach(eName=>dropArea.addEventListener(eName,e=>{prevent(e);dropArea.classList.add('hover');}));
+['dragleave','drop'].forEach(eName=>dropArea.addEventListener(eName,e=>{prevent(e);dropArea.classList.remove('hover');}));
+dropArea.addEventListener('drop',e=>{handleFiles(e.dataTransfer.files);});
+convertBtn.addEventListener('click',()=>{
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=()=>{
+        let text=reader.result;
+        text=text.replace(/\bS1000\b/g,'Z-1 F100').replace(/\bS0\b/g,'Z1 F100');
+        const blob=new Blob([text],{type:'text/plain'});
+        const base=file.name.replace(/\.[^.]*$/, '');
+        downloadLink.href=URL.createObjectURL(blob);
+        downloadLink.download=base+'_converted.nc';
+        downloadLink.style.display='inline';
+    };
+    reader.readAsText(file);
+});
+</script>
 </body>
 </html>

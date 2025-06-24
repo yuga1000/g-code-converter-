@@ -4,13 +4,63 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>G-code Converter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 1em;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 1em;
+            white-space: pre-wrap;
+        }
+    </style>
 </head>
 <body>
     <h1>G-code Converter</h1>
-    <input type="file" id="fileInput" accept=".nc">
+    <input type="file" id="fileInput" accept=".nc,.gcode,.txt">
     <button id="convertBtn">Convert</button>
     <a id="downloadLink" href="#" download="converted.nc" style="display:none">Download converted file</a>
     <pre id="output"></pre>
-    <script src="script.js"></script>
+    <script>
+    document.getElementById('convertBtn').addEventListener('click', function () {
+        const fileInput = document.getElementById('fileInput');
+        const outputPre = document.getElementById('output');
+        const downloadLink = document.getElementById('downloadLink');
+
+        if (!fileInput.files.length) {
+            alert('Please select a file.');
+            return;
+        }
+
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+
+        reader.onload = function () {
+            const text = reader.result;
+            const newline = text.includes('\r\n') ? '\r\n' : '\n';
+            const lines = text.split(/\r?\n/);
+            const convertedLines = lines.map(line => {
+                const trimmed = line.trim();
+                if (/\bM3\b/i.test(trimmed) || /\bS1000\b/i.test(trimmed)) {
+                    return 'G1 Z-1 F100';
+                }
+                if (/\bM5\b/i.test(trimmed) || /\bS0\b/i.test(trimmed)) {
+                    return 'G1 Z1 F100';
+                }
+                return line;
+            });
+            const result = convertedLines.join(newline);
+            outputPre.textContent = result;
+            const blob = new Blob([result], { type: 'text/plain' });
+            downloadLink.href = URL.createObjectURL(blob);
+            downloadLink.style.display = 'inline';
+        };
+
+        reader.readAsText(file);
+    });
+    </script>
 </body>
 </html>

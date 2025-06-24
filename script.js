@@ -13,17 +13,19 @@ document.getElementById('convertBtn').addEventListener('click', () => {
 
     reader.onload = () => {
         const text = reader.result;
+        const newline = text.includes('\r\n') ? '\r\n' : '\n';
         const lines = text.split(/\r?\n/);
         const convertedLines = lines.map(line => {
-            if (line.includes('S1000')) {
+            const trimmed = line.trim();
+            if (/\bM3\b/i.test(trimmed) || /\bS1000\b/i.test(trimmed)) {
                 return 'G1 Z-1 F100';
             }
-            if (line.includes('S0') || line.includes('M5')) {
+            if (/\bM5\b/i.test(trimmed) || /\bS0\b/i.test(trimmed)) {
                 return 'G1 Z1 F100';
             }
             return line;
         });
-        const result = convertedLines.join('\n');
+        const result = convertedLines.join(newline);
         outputPre.textContent = result;
         const blob = new Blob([result], { type: 'text/plain' });
         downloadLink.href = URL.createObjectURL(blob);

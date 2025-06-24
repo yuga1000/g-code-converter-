@@ -2,58 +2,36 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>G-code Converter</title>
+<title>Basic G-code Cleaner</title>
 <style>
-body{
-    font-family:Arial,Helvetica,sans-serif;
-    max-width:600px;
-    margin:40px auto;
-    text-align:center;
-}
-#drop-area{
-    border:2px dashed #666;
-    padding:20px;
-    cursor:pointer;
-    margin-bottom:20px;
-}
-#drop-area.hover{background:#f0f0f0;}
-#convert{padding:8px 16px;margin-bottom:20px;}
-#download{display:none;margin-top:20px;}
+body{font-family:Arial,Helvetica,sans-serif;margin:20px;max-width:700px}
+#drop{border:2px dashed #666;padding:20px;cursor:pointer;text-align:center;margin-bottom:20px}
+#drop.hover{background:#f0f0f0}
+#output{width:100%;height:300px;margin-top:20px}
+#download{margin-top:10px}
 </style>
 </head>
 <body>
-<h1>G-code Converter</h1>
-<div id="drop-area">Drop .gcode or .nc file here or click to choose<input type="file" id="fileInput" accept=".gcode,.nc" style="display:none"></div>
-<button id="convert" disabled>Convert</button>
-<br>
-<a id="download">Download Converted File</a>
+<h1>Basic G-code Cleaner</h1>
+<p>This simple tool replaces <code>S1000</code> with <code>Z-1</code> and <code>S0</code> with <code>Z1</code>. It does not validate G-code or insert tool commands.</p>
+<div id="drop">Drop .gcode or .nc file here or click to choose<input type="file" id="file" accept=".gcode,.nc" style="display:none"></div>
+<textarea id="output" placeholder="Converted code will appear here"></textarea><br>
+<button id="download" disabled>Download</button>
 <script>
-const dropArea=document.getElementById('drop-area');
-const fileInput=document.getElementById('fileInput');
-const convertBtn=document.getElementById('convert');
-const downloadLink=document.getElementById('download');
-let file;
+const drop=document.getElementById('drop');
+const fileInput=document.getElementById('file');
+const output=document.getElementById('output');
+const download=document.getElementById('download');
+let currentName="output.nc";
 function prevent(e){e.preventDefault();e.stopPropagation();}
-function handleFiles(files){file=files[0];if(file)convertBtn.disabled=false;}
-dropArea.addEventListener('click',()=>fileInput.click());
-fileInput.addEventListener('change',()=>handleFiles(fileInput.files));
-['dragenter','dragover'].forEach(eName=>dropArea.addEventListener(eName,e=>{prevent(e);dropArea.classList.add('hover');}));
-['dragleave','drop'].forEach(eName=>dropArea.addEventListener(eName,e=>{prevent(e);dropArea.classList.remove('hover');}));
-dropArea.addEventListener('drop',e=>{handleFiles(e.dataTransfer.files);});
-convertBtn.addEventListener('click',()=>{
-    if(!file)return;
-    const reader=new FileReader();
-    reader.onload=()=>{
-        let text=reader.result;
-        text=text.replace(/\bS1000\b/g,'Z-1 F100').replace(/\bS0\b/g,'Z1 F100');
-        const blob=new Blob([text],{type:'text/plain'});
-        const base=file.name.replace(/\.[^.]*$/, '');
-        downloadLink.href=URL.createObjectURL(blob);
-        downloadLink.download=base+'_converted.nc';
-        downloadLink.style.display='inline';
-    };
-    reader.readAsText(file);
-});
+function handle(f){const file=f[0];if(!file)return;currentName=file.name.replace(/\.[^.]*$/,'')+'_cleaned.nc';const r=new FileReader();
+ r.onload=()=>{let t=r.result;t=t.replace(/\bS1000\b/g,'Z-1').replace(/\bS0\b/g,'Z1');output.value=t;const blob=new Blob([t],{type:'text/plain'});download.href=URL.createObjectURL(blob);download.download=currentName;download.disabled=false;};
+ r.readAsText(file);}
+drop.addEventListener('click',()=>fileInput.click());
+fileInput.addEventListener('change',()=>handle(fileInput.files));
+['dragenter','dragover'].forEach(e=>drop.addEventListener(e,ev=>{prevent(ev);drop.classList.add('hover');}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{prevent(ev);drop.classList.remove('hover');}));
+drop.addEventListener('drop',e=>handle(e.dataTransfer.files));
 </script>
 </body>
 </html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Stream</title>
+<style>
+body { font-family: Arial, Helvetica, sans-serif; margin: 20px; }
+#support-btn {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 15px;
+  background: #00aa00;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+#support-panel {
+  position: fixed;
+  bottom: 70px;
+  right: 20px;
+  width: 260px;
+  border: 2px solid #00aa00;
+  background: #f6fff6;
+  padding: 10px;
+  display: none;
+  z-index: 1000;
+}
+#support-panel h3 { margin-top: 0; }
+.support-address { cursor: pointer; margin: 5px 0; }
+.copy-hint { color: #888; font-size: 0.85em; }
+#close-support {
+  margin-top: 10px;
+  padding: 5px 10px;
+  background: #00aa00;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+</style>
+</head>
+<body>
+<h1>Stream</h1>
+<p>Placeholder content for the stream page.</p>
+<button id="support-btn">SUPPORT</button>
+<div id="support-panel">
+  <h3>Support</h3>
+  <div class="support-address" data-address="0x2451A14572F67C587eEfca42C1F4C414FA2ca6a">ETH: 0x2451A14572F67C587eEfca42C1F4C414FA2ca6a <span class="copy-hint">(click to copy)</span></div>
+  <div class="support-address" data-address="bc1q6l4rw7qvcf2mfe4qyyl45wh7cnu7dgyycj908d">BTC: bc1q6l4rw7qvcf2mfe4qyyl45wh7cnu7dgyycj908d <span class="copy-hint">(click to copy)</span></div>
+  <div class="support-address" data-address="0x9B7B551C120AC91661f5E094a9E51E22Fe4D049B">USDT: 0x9B7B551C120AC91661f5E094a9E51E22Fe4D049B <span class="copy-hint">(click to copy)</span></div>
+  <button id="close-support">CLOSE</button>
+</div>
+<script>
+(function() {
+  var btn = document.getElementById('support-btn');
+  var panel = document.getElementById('support-panel');
+  var closeBtn = document.getElementById('close-support');
+  btn.addEventListener('click', function() {
+    panel.style.display = 'block';
+  });
+  closeBtn.addEventListener('click', function() {
+    panel.style.display = 'none';
+  });
+  panel.addEventListener('click', function(e) {
+    var target = e.target.closest('.support-address');
+    if (!target) return;
+    var address = target.getAttribute('data-address');
+    navigator.clipboard.writeText(address);
+  });
+})();
+</script>
+</body>
+</html>

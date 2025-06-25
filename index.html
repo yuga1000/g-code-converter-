@@ -27,6 +27,8 @@ function convert(text) {
     const added = [];
     const s1000 = (line.match(/\bS1000\b/g) || []).length;
     const s0 = (line.match(/\bS0\b/g) || []).length;
+    const sRange = (line.match(/\bS(?:[1-9]\d{0,2}|1000)\b/g) || []).length;
+    for (let i = 0; i < sRange; i++) added.push(`${indent}G0 Z-0.3`);
     for (let i = 0; i < s1000; i++) added.push(`${indent}G0 Z-1`);
     for (let i = 0; i < s0; i++) added.push(`${indent}G0 Z1`);
     return added.concat([line]).join(newline);

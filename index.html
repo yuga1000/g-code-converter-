@@ -23,15 +23,11 @@ const download = document.getElementById('download');
 function convert(text) {
   const newline = text.includes('\r\n') ? '\r\n' : '\n';
   return text.split(/\r?\n/).map(line => {
-    const indent = line.match(/^\s*/)[0];
-    const added = [];
-    const s1000 = (line.match(/\bS1000\b/g) || []).length;
-    const s0 = (line.match(/\bS0\b/g) || []).length;
-    const sRange = (line.match(/\bS(?:[1-9]\d{0,2}|1000)\b/g) || []).length;
-    for (let i = 0; i < sRange; i++) added.push(`${indent}G0 Z-0.3`);
-    for (let i = 0; i < s1000; i++) added.push(`${indent}G0 Z-1`);
-    for (let i = 0; i < s0; i++) added.push(`${indent}G0 Z1`);
-    return added.concat([line]).join(newline);
+    return line.replace(/\bS(\d{1,4})\b/g, (_, s) => {
+      const val = Math.min(Math.max(parseInt(s, 10), 0), 1000);
+      const z = 0.4 - (val / 1000) * 0.8;
+      return `G0 Z${z.toFixed(2)}`;
+    });
   }).join(newline);
 }
 
